@@ -13,7 +13,7 @@ comptime {
 
 // Low-level coroutine context used by libcoro_stack_swap.
 pub const Coro = packed struct {
-    stack_pointer: ?[*]u8, // only null for root fiber
+    stack_pointer: [*]u8,
 
     const Self = @This();
     const Func = *const fn (
@@ -22,7 +22,7 @@ pub const Coro = packed struct {
     ) callconv(.C) noreturn;
 
     pub fn root() Self {
-        return .{ .stack_pointer = null };
+        return undefined;
     }
 
     pub fn init(func: Func, stack: []align(stack_align) u8) Self {
