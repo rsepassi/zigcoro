@@ -52,24 +52,26 @@ test "simple" {
 ## Todos
 
 * yield/await
-* Detect incomplete coroutines
+* Benchmark number of coroutines and memory
 * Cancellation
-* Single-threaded scheduler/runtime
-* Multi-threaded scheduler/runtime
+* Task library, single and multi threaded schedulers
 * Coro-friendly (i.e. non-blocking) concurrency primitives and IO
+* Recursive data structure and coroutine based iterator library
 * Coro names/ids
 * Debugging/tracing tools
+* Detect incomplete coroutines
 * Make it so that it's trivial to switch to Zig's async when it's ready
-* Stacks
-  * Stackless coroutines (with limitations)
-  * Auto-growing stacks
-  * Copy-stack mode
-* Link to other inspiring implementations
+* Link to other inspiring implementations/docs
+  * zefi, minicoro
+  * Revisiting Coroutines by de Moura & Ierusalimschy
 * Architecture support
   * x86 support
   * risc-v
   * 32-bit
   * WASM
+  * Comptime?
+* ASAN, TSAN, Valgrind support
+* Coroutine-based parsing library
 
 ## Notes
 
