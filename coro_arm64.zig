@@ -1,4 +1,5 @@
 const std = @import("std");
+const Error = @import("errors.zig").Error;
 
 pub const stack_align = 16;
 
@@ -25,14 +26,19 @@ pub const Coro = packed struct {
         return undefined;
     }
 
-    pub fn init(func: Func, stack: []align(stack_align) u8) Self {
-        // Zero out register space
+    pub fn init(func: Func, stack: []align(stack_align) u8) !Self {
         const register_bytes = 0xa0;
+        const fnptr_size = @sizeOf(@TypeOf(func));
+
+        if (stack.len < (register_bytes + fnptr_size)) {
+            return Error.StackTooSmall;
+        }
+
+        // Zero out register space
         var register_space = stack[stack.len - register_bytes ..];
         @memset(register_space, 0);
 
         // Set link register to func
-        const fnptr_size = @sizeOf(@TypeOf(func));
         var lr_space = stack[stack.len - fnptr_size ..];
         const fn_ptr: [fnptr_size]u8 = @bitCast(@intFromPtr(func));
         @memcpy(lr_space, &fn_ptr);
@@ -41,7 +47,7 @@ pub const Coro = packed struct {
         return .{ .stack_pointer = register_space.ptr };
     }
 
-    pub fn resume_from(self: *Self, from: *Self) void {
+    pub inline fn resume_from(self: *Self, from: *Self) void {
         libcoro_stack_swap(from, self);
     }
 };

@@ -67,7 +67,7 @@ test {
 
     set_idx(0);
     var x: usize = 88;
-    var test_coro = libcoro.Coro.init(test_fn, .{&x}, stack);
+    var test_coro = try libcoro.Coro.init(test_fn, .{&x}, stack);
 
     set_idx(1);
     try std.testing.expect(!test_coro.done);
@@ -89,4 +89,32 @@ test {
     for (0..steps.len) |i| {
         try std.testing.expectEqual(i, steps[i]);
     }
+}
+
+// Panic on stack overflow
+// Set this to 512
+const stack_overflow_stack_size: usize = 1024;
+
+fn stack_overflow() void {
+    var x = [_]i128{0} ** 2;
+    for (&x) |*el| {
+        el.* += std.time.nanoTimestamp();
+    }
+    const res = libcoro.xsuspend_safe();
+    res catch |e| {
+        std.debug.assert(e == libcoro.Error.StackOverflow);
+        @panic("Yup, it stack overflowed!");
+    };
+    var sum: i128 = 0;
+    for (x) |el| {
+        sum += el;
+    }
+}
+
+test "stack overflow" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.Coro.initAlloc(stack_overflow, .{}, allocator, stack_overflow_stack_size);
+    defer coro.deinit();
+    libcoro.xresume(coro);
+    libcoro.xresume(coro);
 }
