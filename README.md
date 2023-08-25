@@ -12,26 +12,24 @@ Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 ## Example
 
 ```zig
+fn simple_coro(x: *i32) void {
+    x.* += 1;
+
+    // Use yield to switch back to the calling coroutine (which may be the main
+    // thread)
+    libcoro.xsuspend();
+
+    x.* += 3;
+}
+
 test "simple" {
     const allocator = std.heap.c_allocator;
 
-    const T = struct {
-        fn simple_coro(x: *i32) void {
-            x.* += 1;
-
-            // Use yield to switch back to the calling coroutine (which may be the main
-            // thread)
-            libcoro.xsuspend();
-
-            x.* += 3;
-        }
-    };
-
-    // Create the coroutine.
-    // It has a dedicated stack. You can specify the allocator and stack size
-    // (initAlloc) or provide a stack directly (init).
+    // Create a coroutine.
+    // Each coroutine has a dedicated stack. You can specify an allocator and
+    // stack size (Coro.initAlloc) or provide a stack directly (Coro.init).
     var x: i32 = 0;
-    var coro = try libcoro.Coro.initAlloc(T.simple_coro, .{&x}, allocator, null);
+    var coro = try libcoro.Coro.initAlloc(simple_coro, .{&x}, allocator, null);
     defer coro.deinit();
 
     // Coroutines start off paused.
@@ -39,6 +37,8 @@ test "simple" {
 
     // xresume switches to the coroutine.
     libcoro.xresume(coro);
+
+    // A coroutine can xsuspend, yielding control back to its caller.
     try std.testing.expectEqual(x, 1);
 
     libcoro.xresume(coro);
