@@ -36,3 +36,14 @@ This is a "stackful" coroutine implementation; that is, each coroutine is given 
 explicitly allocated separate stack (which itself could be stack or heap allocated).
 An ergonomic "stackless" implementation would require language support and that's
 what we expect to see with Zig's async functionality.
+
+## Performance
+
+Run on an M1 Mac Mini.
+
+```
+> zig env | grep target
+ "target": "aarch64-macos.13.5...13.5-none"
+> zig build benchmark
+ns/ctxswitch: 20
+```
