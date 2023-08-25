@@ -15,7 +15,7 @@ Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 fn simple_coro(x: *i32) void {
     x.* += 1;
 
-    // Use yield to switch back to the calling coroutine (which may be the main
+    // Use xsuspend to switch back to the calling coroutine (which may be the main
     // thread)
     libcoro.xsuspend();
 
