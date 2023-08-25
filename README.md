@@ -1,4 +1,6 @@
-# Zig async as a library
+# zigcoro
+
+*Async Zig as a library using stackful coroutines.*
 
 WIP as of 2023/08/24.
 
