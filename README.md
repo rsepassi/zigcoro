@@ -9,9 +9,48 @@ out an async runtime as a library. This is the result of that effort.
 
 Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 
+## Example
+
+```zig
+test "simple" {
+    const allocator = std.heap.c_allocator;
+
+    const T = struct {
+        fn simple_coro(x: *i32) void {
+            x.* += 1;
+
+            // Use yield to switch back to the calling coroutine (which may be the main
+            // thread)
+            libcoro.xsuspend();
+
+            x.* += 3;
+        }
+    };
+
+    // Create the coroutine.
+    // It has a dedicated stack. You can specify the allocator and stack size
+    // (initAlloc) or provide a stack directly (init).
+    var x: i32 = 0;
+    var coro = try libcoro.Coro.initAlloc(T.simple_coro, .{&x}, allocator, null);
+    defer coro.deinit();
+
+    // Coroutines start off paused.
+    try std.testing.expectEqual(x, 0);
+
+    // xresume switches to the coroutine.
+    libcoro.xresume(coro);
+    try std.testing.expectEqual(x, 1);
+
+    libcoro.xresume(coro);
+    try std.testing.expectEqual(x, 4);
+
+    // Finished coroutines are marked done
+    try std.testing.expect(coro.done);
+}
+```
+
 ## Todos
 
-* anytype func and args
 * yield/await
 * Detect incomplete coroutines
 * Cancellation
@@ -47,5 +86,5 @@ Run on an M1 Mac Mini.
 > zig env | grep target
  "target": "aarch64-macos.13.5...13.5-none"
 > zig build benchmark
-ns/ctxswitch: 20
+ns/ctxswitch: 19
 ```

@@ -5,7 +5,7 @@ var num_bounces: usize = 0;
 
 fn test_fn() void {
     for (0..num_bounces) |_| {
-        libcoro.yield();
+        libcoro.xsuspend();
     }
 }
 
@@ -23,9 +23,9 @@ pub fn main() !void {
     {
         var test_coro = libcoro.Coro.init(test_fn, .{}, stack);
         for (0..num_bounces) |_| {
-            test_coro.xresume();
+            libcoro.xresume(test_coro);
         }
-        test_coro.xresume();
+        libcoro.xresume(test_coro);
     }
 
     num_bounces = 20_000_000;
@@ -34,13 +34,13 @@ pub fn main() !void {
 
         const start = std.time.nanoTimestamp();
         for (0..num_bounces) |_| {
-            test_coro.xresume();
+            libcoro.xresume(test_coro);
         }
         const end = std.time.nanoTimestamp();
         const duration = end - start;
         const ns_per_bounce = @divFloor(duration, num_bounces * 2);
         std.debug.print("ns/ctxswitch: {d}\n", .{ns_per_bounce});
 
-        test_coro.xresume();
+        libcoro.xresume(test_coro);
     }
 }
