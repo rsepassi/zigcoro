@@ -21,7 +21,7 @@ pub fn main() !void {
     // warmup
     num_bounces = 100_000;
     {
-        var test_coro = try libcoro.Coro.init(test_fn, .{}, stack);
+        var test_coro = try libcoro.xasync(test_fn, .{}, stack, .{});
         for (0..num_bounces) |_| {
             libcoro.xresume(test_coro);
         }
@@ -30,7 +30,7 @@ pub fn main() !void {
 
     num_bounces = 20_000_000;
     {
-        var test_coro = try libcoro.Coro.init(test_fn, .{}, stack);
+        var test_coro = try libcoro.xasync(test_fn, .{}, stack, .{});
 
         const start = std.time.nanoTimestamp();
         for (0..num_bounces) |_| {
