@@ -100,7 +100,7 @@ fn stack_overflow() void {
     for (&x) |*el| {
         el.* += std.time.nanoTimestamp();
     }
-    const res = libcoro.xsuspend_safe();
+    const res = libcoro.xsuspendSafe();
     res catch |e| {
         std.debug.assert(e == libcoro.Error.StackOverflow);
         @panic("Yup, it stack overflowed!");

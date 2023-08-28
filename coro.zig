@@ -14,7 +14,7 @@ const base = switch (builtin.cpu.arch) {
 //     * Done: set in runcoro
 //   * id.invocation: incremented in ThreadState.switchTo
 
-threadlocal var thread_state = ThreadState{};
+threadlocal var thread_state: ThreadState = .{};
 const ThreadState = struct {
     root_coro: Coro = .{
         .stack = undefined,
@@ -119,9 +119,9 @@ pub fn next(coro: anytype) @TypeOf(coro).YieldT {
 
 // Suspend the current coroutine, yielding control back to the last resumer.
 pub fn xsuspend() void {
-    xsuspend_safe() catch unreachable;
+    xsuspendSafe() catch unreachable;
 }
-pub fn xsuspend_safe() Error!void {
+pub fn xsuspendSafe() Error!void {
     if (thread_state.current_coro) |coro| {
         try check_stack_overflow(coro);
         thread_state.switchTo(coro.resumer);
