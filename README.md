@@ -1,58 +1,40 @@
 # zigcoro
 
-*Async Zig as a library using stackful coroutines.*
+Async Zig as a library using stackful asymmetric coroutines.
 
-WIP as of 2023/08/28.
+* Stackful: each coroutine has an explicitly allocated stack and
+  suspends/yields preserve the entire call stack of the coroutine. An
+  ergonomic "stackless" implementation would require language support and
+  that's what we expect to see with Zig's async functionality.
+* Asymmetric: coroutines are nested such that there is a "caller"/"callee"
+  relationship, starting with a root coroutine per thread. The caller coroutine
+  is the parent such that upon completion of the callee (the child coroutine),
+  control will transfer to the caller. Intermediate yields/suspends transfer
+  control to the last resuming coroutine.
+
+---
+
+*WIP as of 2023/08/28*
 
 While waiting for Zig's async to land, I thought it'd be interesting to build
 out an async runtime as a library. This is the result of that effort.
 
 Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 
-## Example
+## API
 
-```zig
-fn simple_coro(x: *i32) void {
-    x.* += 1;
-
-    // Use xsuspend to switch back to the calling coroutine (which may be the main
-    // thread)
-    libcoro.xsuspend();
-
-    x.* += 3;
-}
-
-test "simple" {
-    const allocator = std.heap.c_allocator;
-
-    // Create a coroutine.
-    // Each coroutine has a dedicated stack. You can specify an allocator and
-    // stack size (xasyncAlloc) or provide a stack directly (xasync).
-    var x: i32 = 0;
-    var coro = try libcoro.xasyncAlloc(simple_coro, .{&x}, allocator, null);
-    defer coro.deinit();
-
-    // Coroutines start off paused.
-    try std.testing.expectEqual(x, 0);
-
-    // xresume switches to the coroutine.
-    libcoro.xresume(coro);
-
-    // A coroutine can xsuspend, yielding control back to its caller.
-    try std.testing.expectEqual(x, 1);
-
-    libcoro.xresume(coro);
-    try std.testing.expectEqual(x, 4);
-
-    // Finished coroutines are marked done
-    try std.testing.expect(coro.done);
-}
+```
+Create: xasync, xasyncAlloc
+Resume: xawait, xresume, next
+Suspend: xsuspend, yield
+Destory: coro.deinit()
+Status: coro.status()
 ```
 
 ## Todos
 
 Minimal:
-* Inject values in with resume (to be returned in suspend/yield)
+* Inject values in with xresume/next (to be returned in suspend/yield)
 * User function error handling
 * Benchmark number of coroutines and memory
 
@@ -76,17 +58,6 @@ Featureful:
   * 32-bit
   * WASM
   * Comptime?
-
-## Notes
-
-This is a "stackful asymmetric" coroutine library:
-* Stackful: each coroutine has an explicitly allocated stack and
-  suspends/yields preserve the entire call stack of the current coroutine. An
-  ergonomic "stackless" implementation would require language support and
-  that's what we expect to see with Zig's async functionality.
-* Asymmetric: coroutines are nested such that there is always a
-  "caller"/"callee" relationship. The caller coroutine is the parent such that
-  all yields/suspends will jump back to it.
 
 ## Performance
 
