@@ -24,9 +24,16 @@ Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 ## API
 
 ```
-Create: xasync, xasyncAlloc
-Resume: xawait, xresume, next
-Suspend: xsuspend, yield
+Create:
+  xasync: create coroutine with a caller-provided stack
+  xasyncAlloc: create coroutine with an Allocator
+Resume:
+  xresume: resume coroutine until next suspend
+  next: resume coroutine until next yield
+  xawait: resume coroutine until complete
+Suspend:
+  xsuspend: suspend the running coroutine
+  yield: suspend the running coroutine and yield a value
 Destory: coro.deinit()
 Status: coro.status()
 ```
@@ -34,7 +41,6 @@ Status: coro.status()
 ## Todos
 
 Minimal:
-* Inject values in with xresume/next (to be returned in suspend/yield)
 * User function error handling
 * Benchmark number of coroutines and memory
 
