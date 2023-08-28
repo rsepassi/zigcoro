@@ -75,7 +75,7 @@ ns/ctxswitch: 17
 
 ## Inspirations
 
-* [Revisiting Coroutines by de Moura & Ierusalimschy][coropaper]
+* ["Revisiting Coroutines"][coropaper] by de Moura & Ierusalimschy
 * https://github.com/edubart/minicoro
 * https://github.com/kprotty/zefi
 
