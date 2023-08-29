@@ -108,7 +108,6 @@ Wonky bits:
 * Coroutine-based parsing library
 * Make it so that it's trivial to switch to Zig's async when it's ready
 * Broader architecture support
-  * Windows
   * risc-v
   * 32-bit
   * WASM
