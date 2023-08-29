@@ -192,13 +192,13 @@ fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
         }
 
         fn popAwait(self: *Self) RetT {
-            if (self.storage == null) @panic("nothing in ret storage");
+            if (self.storage == null) @panic("xawait called, but coroutine never returned a value");
             switch (self.storage.?) {
                 .ret => |val| {
                     self.storage = null;
                     return val;
                 },
-                else => @panic("found yield, not return"),
+                else => @panic("xawait called, but coroutine did not return a value. It did yield a value though. Did you mean to call xnext?"),
             }
         }
 
