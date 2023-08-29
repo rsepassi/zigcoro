@@ -1,7 +1,7 @@
 # See Microsoft x86-64 calling convention
 .global libcoro_stack_swap
 libcoro_stack_swap:
-# Store Windows thread local storage values
+# Store Windows stack information
 pushq %gs:0x10
 pushq %gs:0x08
 
@@ -57,7 +57,7 @@ popq %rdi
 popq %rbx
 popq %rbp
 
-# Restore Windows thread local storage values
+# Restore Windows stack information
 popq %gs:0x08
 popq %gs:0x10
 
