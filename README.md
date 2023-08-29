@@ -102,6 +102,7 @@ Wonky bits:
 
 * ["Revisiting Coroutines"][coropaper] by de Moura & Ierusalimschy
 * https://github.com/edubart/minicoro
+* https://github.com/kurocha/coroutine
 * https://github.com/kprotty/zefi
 
 [coropaper]: https://dl.acm.org/doi/pdf/10.1145/1462166.1462167
