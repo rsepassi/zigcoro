@@ -3,7 +3,9 @@ const builtin = @import("builtin");
 const base = @import("coro_base.zig");
 
 // libcoro mutable state:
-// * ThreadState.current_coro: set in ThreadState.switchTo
+// * ThreadState
+//   * current_coro: set in ThreadState.switchTo
+//   * next_coro_id: set in ThreadState.nextCoroId
 // * Coro
 //   * resumer: set in ThreadState.switchTo
 //   * status:
@@ -17,6 +19,7 @@ const ThreadState = struct {
         .stack = undefined,
         .impl = undefined,
         .resumer = undefined,
+        .yieldfn = undefined,
         .id = CoroInvocationId.root(),
     },
     current_coro: ?*Coro = null,
@@ -64,7 +67,7 @@ pub const stack_align = base.stack_align;
 pub const default_stack_size = 1024 * 4;
 
 pub const AsyncOptions = struct {
-    yieldT: ?type = null,
+    YieldT: ?type = null,
 };
 
 pub const AsyncStatus = enum {
@@ -110,18 +113,14 @@ pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
     while (coro.status() != .Done) {
         thread_state.switchIn(coro.coro);
     }
-    const state = coro.getState();
-    return state.retval;
+    return coro.getStorage().popAwait();
 }
 
 // Await the next yield of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
-pub fn xnext(coro: anytype) @TypeOf(coro).YieldT {
+pub fn xnext(coro: anytype) ?@TypeOf(coro).YieldT {
     thread_state.switchIn(coro.coro);
-    const state = @fieldParentPtr(@TypeOf(coro).State0, "coro", coro.coro);
-    const out = state.retval;
-    state.retval = null;
-    return out;
+    return coro.getStorage().popNext();
 }
 
 // Suspend the current coroutine, yielding control back to the last resumer.
@@ -140,34 +139,10 @@ pub fn xsuspendSafe() Error!void {
 // Yield a value from the current coroutine and suspend, yielding control back
 // to the last resumer.
 pub fn xyield(val: anytype) void {
-    const coro = CoroT(OptionalOf(@TypeOf(val)), .{}).wrap(
-        thread_state.current_coro.?,
-    );
-    coro.setStorage(val);
+    const coro = thread_state.current_coro.?;
+    coro.yield(@ptrCast(&val));
     xsuspend();
 }
-
-const CoroId = struct {
-    thread: std.Thread.Id,
-    coro: usize,
-};
-
-const CoroInvocationId = struct {
-    id: CoroId,
-    invocation: i64 = -1,
-
-    fn init() @This() {
-        return .{ .id = thread_state.nextCoroId() };
-    }
-
-    fn root() @This() {
-        return .{ .id = .{ .thread = 0, .coro = 0 } };
-    }
-
-    fn incr(self: *@This()) void {
-        self.invocation += 1;
-    }
-};
 
 pub const Coro = struct {
     stack: StackT,
@@ -176,6 +151,7 @@ pub const Coro = struct {
     statusval: AsyncStatus = .Suspended,
     allocator: ?std.mem.Allocator = null,
     id: CoroInvocationId,
+    yieldfn: *const fn (*Coro, *const anyopaque) void,
 
     const Self = @This();
 
@@ -195,32 +171,74 @@ pub const Coro = struct {
     pub fn status(self: Self) AsyncStatus {
         return self.statusval;
     }
+
+    fn yield(self: *Self, ptr: *const anyopaque) void {
+        self.yieldfn(self, ptr);
+    }
 };
 
-fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
-    const StorageT = blk: {
-        if (options.yieldT) |T| {
-            if (RetT != void and T != RetT) @compileError("yield type must match return type, or return type must be void");
-            break :blk OptionalOf(T);
-        } else {
-            break :blk RetT;
+fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
+    return struct {
+        const YieldT = (mYieldT orelse RetT);
+        storage: ?union(enum) {
+            ret: RetT,
+            yield: YieldT,
+        } = null,
+
+        const Self = @This();
+
+        fn setReturn(self: *Self, val: RetT) void {
+            self.storage = .{ .ret = val };
+        }
+
+        fn popAwait(self: *Self) RetT {
+            if (self.storage == null) @panic("nothing in ret storage");
+            switch (self.storage.?) {
+                .ret => |val| {
+                    self.storage = null;
+                    return val;
+                },
+                else => @panic("found yield, not return"),
+            }
+        }
+
+        fn setYield(self: *Self, val: YieldT) void {
+            self.storage = .{ .yield = val };
+        }
+
+        fn popNext(self: *Self) ?YieldT {
+            if (self.storage == null) return null;
+            switch (self.storage.?) {
+                .ret => return null,
+                .yield => |val| {
+                    self.storage = null;
+                    return val;
+                },
+            }
         }
     };
+}
+
+fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
+    return CoroTInner(RetT, YieldT);
+}
+
+fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
+    const StorageT = CoroStorage(RetT, maybeYieldT);
 
     return struct {
         const Self = @This();
+
         const AwaitT = RetT;
-        const YieldT =
-            if (@typeInfo(StorageT) != .Optional) @compileError(std.fmt.comptimePrint("coro.next() requires an optional yield type, but this coroutine has yield type {any}", .{StorageT})) else StorageT;
+        const YieldT = StorageT.YieldT;
 
         coro: *Coro,
 
         // Partial state to store in stack
-        // State is split so that the type only depends on
-        // StorageT.
+        // State is split so that the type only depends on StorageT.
         const State0 = struct {
             coro: Coro,
-            retval: StorageT = undefined,
+            storage: StorageT = .{},
         };
 
         fn wrap(coro: *Coro) Self {
@@ -229,7 +247,7 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
 
         fn init(
             func: anytype,
-            args: anytype,
+            args: std.meta.ArgsTuple(@TypeOf(func)),
             stack: StackT,
         ) !Self {
             // State to store in stack
@@ -251,11 +269,8 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
                     const retval = @call(.auto, target_state.func, target_state.args);
 
                     // Mark the coroutine done and resume the calling coroutine.
-                    if (RetT != void) {
-                        target_state.state0.retval = retval;
-                    }
+                    target_state.state0.storage.setReturn(retval);
                     target_coro.statusval = .Done;
-                    // std.debug.print("runcoro done: {any}\n", .{target_coro.id});
                     thread_state.switchOut(target_coro.resumer);
 
                     // Never returns
@@ -269,6 +284,14 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
                     });
                 }
             }.runcoro);
+
+            const yieldfn = (struct {
+                fn yieldfn(coro: *Coro, ptr: *const anyopaque) void {
+                    const target_state = @fieldParentPtr(State, "state0", @fieldParentPtr(State0, "coro", coro));
+                    const val: *const YieldT = @ptrCast(@alignCast(ptr));
+                    target_state.state0.storage.setYield(val.*);
+                }
+            }).yieldfn;
 
             // Store State at the top of stack
             var state_ptr = @intFromPtr(stack.ptr + stack.len - @sizeOf(State));
@@ -291,7 +314,12 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
 
             // Create the underlying coroutine
             const base_coro = try base.Coro.init(&runcoro, reduced_stack);
-            const coro = Coro{ .stack = stack, .impl = base_coro, .id = CoroInvocationId.init() };
+            const coro = Coro{
+                .stack = stack,
+                .impl = base_coro,
+                .id = CoroInvocationId.init(),
+                .yieldfn = yieldfn,
+            };
             state.* = .{
                 .state0 = .{
                     .coro = coro,
@@ -311,18 +339,36 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
             return self.coro.statusval;
         }
 
-        fn getState(self: Self) *State0 {
-            return @fieldParentPtr(State0, "coro", self.coro);
-        }
-
-        fn setStorage(self: Self, val: StorageT) void {
+        fn getStorage(self: Self) *StorageT {
             const state = @fieldParentPtr(State0, "coro", self.coro);
-            state.retval = val;
+            return &state.storage;
         }
     };
 }
 
 // ============================================================================
+
+const CoroId = struct {
+    thread: std.Thread.Id,
+    coro: usize,
+};
+
+const CoroInvocationId = struct {
+    id: CoroId,
+    invocation: i64 = -1,
+
+    fn init() @This() {
+        return .{ .id = thread_state.nextCoroId() };
+    }
+
+    fn root() @This() {
+        return .{ .id = .{ .thread = 0, .coro = 0 } };
+    }
+
+    fn incr(self: *@This()) void {
+        self.invocation += 1;
+    }
+};
 
 // {*Coro, CoroT} -> Coro
 fn getcoro(coro: anytype) *Coro {
@@ -348,10 +394,5 @@ fn check_stack_overflow(coro: *Coro) !void {
 
 fn CoroFromFn(comptime Fn: type, comptime options: AsyncOptions) type {
     const RetT = @typeInfo(Fn).Fn.return_type.?;
-    return CoroT(RetT, options);
-}
-
-fn OptionalOf(comptime T: type) type {
-    const info = std.builtin.Type{ .Optional = .{ .child = T } };
-    return @Type(info);
+    return CoroT(RetT, options.YieldT);
 }

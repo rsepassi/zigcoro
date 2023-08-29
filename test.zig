@@ -127,7 +127,7 @@ fn generator() void {
 
 test "generator" {
     const allocator = std.heap.c_allocator;
-    var coro = try libcoro.xasyncAlloc(generator, .{}, allocator, null, .{ .yieldT = usize });
+    var coro = try libcoro.xasyncAlloc(generator, .{}, allocator, null, .{ .YieldT = usize });
     defer coro.deinit();
     var i: usize = 0;
     while (libcoro.xnext(coro)) |val| : (i += 1) {
@@ -157,34 +157,25 @@ test "nested" {
     try std.testing.expectEqual(val, 17);
 }
 
-// fn corofn1() usize {
-//     libcoro.xsuspend();
-//     const val: usize = 7;
-//     libcoro.yield(val);
-//     return 10;
-// }
-//
-// fn corofn2(coro: *libcoro.Coro) usize {
-//     const coroT = libcoro.CoroT2(usize, .{ .yieldT = usize }).wrap(coro);
-//     const val = libcoro.next(coroT).?;
-//     std.debug.assert(val == 7);
-//     libcoro.yield(val + 1);
-//     return libcoro.xawait(coroT) + 22;
-// }
-//
-// test "current is not resume" {
-//     const allocator = std.heap.c_allocator;
-//     var coro1 = try libcoro.xasyncAlloc(corofn1, .{}, allocator, null, .{ .yieldT = usize });
-//     defer coro1.deinit();
-//
-//     // Parent (original resumer) is main
-//     libcoro.xresume(coro1);
-//
-//     var coro2 = try libcoro.xasyncAlloc(corofn2, .{coro1.coro}, allocator, null, .{ .yieldT = usize });
-//     defer coro2.deinit();
-//
-//     const val = libcoro.next(coro2);
-//     try std.testing.expectEqual(val, 8);
-//     const retval = libcoro.xawait(coro2);
-//     try std.testing.expectEqual(retval, 33);
-// }
+fn yieldAndReturn() usize {
+    const x: i32 = 7;
+    libcoro.xyield(x);
+    return 10;
+}
+
+test "yield and return" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(yieldAndReturn, .{}, allocator, null, .{ .YieldT = i32 });
+    defer coro.deinit();
+
+    var i: usize = 0;
+    while (libcoro.xnext(coro)) |val| : (i += 1) {
+        if (@TypeOf(val) != i32) @compileError("bad type");
+        try std.testing.expectEqual(val, 7);
+    }
+    try std.testing.expectEqual(i, 1);
+
+    const val = libcoro.xawait(coro);
+    if (@TypeOf(val) != usize) @compileError("bad type");
+    try std.testing.expectEqual(val, 10);
+}

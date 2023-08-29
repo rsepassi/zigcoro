@@ -76,14 +76,8 @@ can spawn and swap between 100M simple coroutines without issue.
 Not ready for use.
 
 MVP todos:
-* Addressing wonky bits (below)
 * Coroutines propagate errors on resume/next/await
-
-Wonky bits:
-* The storage type for a coroutine is a little ill-defined when the coroutine
-  is both a generator and an awaitable. T, ?T, ??T.
-  * May want to handle yield/next a bit differently. Possibly push it to a
-    separate channel-like abstraction.
+* Replace some panics/unreachables with errors where it makes sense
 
 ## Future work
 
