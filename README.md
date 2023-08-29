@@ -80,17 +80,6 @@ MVP todos:
 * Coroutines propagate errors on resume/next/await
 
 Wonky bits:
-* Currently a coroutine has a parent as well as a last resumer. Upon
-  yield/suspend, control is transferred to the last resumer. Upon return,
-  control is transferred to the parent. So, if `xawait(coro)` is called from a
-  coroutine other than the parent, `xawait` may never return. Similarly, if
-  calling `xresume`/`xnext` from a coroutine other than the parent, and the resumed
-  coroutine returns, control will be transferred to the parent, not the last
-  resumer, which may result in unexpected behavior.
-  * May want to enforce:
-    * that xresume is paired with xsuspend
-    * that xnext is paired with xyield
-    * that xawait is only called from the parent
 * The storage type for a coroutine is a little ill-defined when the coroutine
   is both a generator and an awaitable. T, ?T, ??T.
   * May want to handle yield/next a bit differently. Possibly push it to a

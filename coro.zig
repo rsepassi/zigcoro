@@ -22,10 +22,20 @@ const ThreadState = struct {
     current_coro: ?*Coro = null,
     next_coro_id: usize = 1,
 
-    fn switchTo(self: *@This(), target: *Coro) void {
+    // Called from resume, next, await
+    fn switchIn(self: *@This(), target: *Coro) void {
+        self.switchTo(target, true);
+    }
+
+    // Called from suspend, yield
+    fn switchOut(self: *@This(), target: *Coro) void {
+        self.switchTo(target, false);
+    }
+
+    fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
         const resumer = self.current();
         if (resumer.statusval != .Done) resumer.statusval = .Suspended;
-        target.resumer = resumer;
+        if (set_resumer) target.resumer = resumer;
         target.statusval = .Active;
         target.id.incr();
         self.current_coro = target;
@@ -91,14 +101,14 @@ pub fn xasyncAlloc(
 // Resume the passed coroutine, suspending the current coroutine.
 // coro: Coro, CoroT
 pub fn xresume(coro: anytype) void {
-    thread_state.switchTo(getcoro(coro));
+    thread_state.switchIn(getcoro(coro));
 }
 
 // Await the result of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
 pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
     while (coro.status() != .Done) {
-        thread_state.switchTo(coro.coro);
+        thread_state.switchIn(coro.coro);
     }
     const state = coro.getState();
     return state.retval;
@@ -107,7 +117,7 @@ pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
 // Await the next yield of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
 pub fn xnext(coro: anytype) @TypeOf(coro).YieldT {
-    thread_state.switchTo(coro.coro);
+    thread_state.switchIn(coro.coro);
     const state = @fieldParentPtr(@TypeOf(coro).State0, "coro", coro.coro);
     const out = state.retval;
     state.retval = null;
@@ -121,7 +131,7 @@ pub fn xsuspend() void {
 pub fn xsuspendSafe() Error!void {
     if (thread_state.current_coro) |coro| {
         try check_stack_overflow(coro);
-        thread_state.switchTo(coro.resumer);
+        thread_state.switchOut(coro.resumer);
     } else {
         return Error.SuspendFromMain;
     }
@@ -233,6 +243,7 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
             const runcoro = (struct {
                 fn runcoro(resumer: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
                     const resumer_coro = @fieldParentPtr(Coro, "impl", resumer);
+                    _ = resumer_coro;
                     const target_coro = @fieldParentPtr(Coro, "impl", target);
 
                     // Run the user function.
@@ -245,7 +256,7 @@ fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
                     }
                     target_coro.statusval = .Done;
                     // std.debug.print("runcoro done: {any}\n", .{target_coro.id});
-                    thread_state.switchTo(resumer_coro);
+                    thread_state.switchOut(target_coro.resumer);
 
                     // Never returns
                     const err_msg = "Cannot resume an already completed coroutine {any}";
