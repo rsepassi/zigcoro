@@ -1,12 +1,27 @@
 const std = @import("std");
 const Error = @import("errors.zig").Error;
 
+const ArchInfo = struct {
+    num_registers: usize,
+    assembly: []u8,
+};
+const arch_info = switch (@import("builtin").os.tag) {
+    .windows => .{
+        .num_registers = 30,
+        .assembly = @embedFile("coro_amd64_windows.s"),
+    },
+    else => .{
+        .num_registers = 6,
+        .assembly = @embedFile("coro_amd64.s"),
+    },
+};
+
 pub const stack_align = 16;
-const num_registers = 6;
+const num_registers = arch_info.num_registers;
 
 extern fn libcoro_stack_swap(current: *Coro, target: *Coro) void;
 comptime {
-    asm (@embedFile("coro_amd64.s"));
+    asm (arch_info.assembly);
 }
 
 pub const Coro = packed struct {
