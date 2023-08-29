@@ -111,6 +111,7 @@ Wonky bits:
 * Recursive data structure and coroutine based iterator library
 * Coroutine-based parsing library
 * Make it so that it's trivial to switch to Zig's async when it's ready
+* C API
 * Broader architecture support
   * risc-v
   * 32-bit
