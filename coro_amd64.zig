@@ -3,7 +3,7 @@ const Error = @import("errors.zig").Error;
 
 const ArchInfo = struct {
     num_registers: usize,
-    assembly: []u8,
+    assembly: []const u8,
 };
 const arch_info: ArchInfo = switch (@import("builtin").os.tag) {
     .windows => .{
@@ -34,8 +34,8 @@ pub const Coro = packed struct {
     ) callconv(.C) noreturn;
 
     pub fn init(func: Func, stack: []align(stack_align) u8) !Self {
-        if (@sizeOf(usize) != 8) @compileError("amd64 usize expected to take 8 bytes");
-        if (@sizeOf(*Func) != 8) @compileError("amd64 function pointer expected to take 8 bytes");
+        if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
+        if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
 
         // Top of the stack is the end of stack
         const sp = stack.ptr + stack.len;
