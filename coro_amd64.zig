@@ -2,7 +2,7 @@ const std = @import("std");
 const Error = @import("errors.zig").Error;
 
 pub const stack_align = 16;
-const num_registers = 6;
+const num_registers = 8;
 
 extern fn libcoro_stack_swap(current: *Coro, target: *Coro) void;
 comptime {
@@ -27,11 +27,6 @@ pub const Coro = packed struct {
         // Top of the stack is the end of stack
         const sp = stack.ptr + stack.len;
 
-        // Set last register to nullptr
-        const last: *usize = @ptrCast(@alignCast(sp - @sizeOf(usize)));
-        last.* = 0;
-
-        // Set jump register (second to last value on the stack) to func
         const jump: *Func = @ptrCast(@alignCast(sp - 2 * @sizeOf(*Func)));
         jump.* = func;
 
