@@ -168,7 +168,8 @@ can spawn and swap between 100M simple coroutines without issue.
 
 ## Future work
 
-* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv)
+* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv or
+  libxev)
 * Task library
   * Schedulers (single and multi threaded)
   * Futures
