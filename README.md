@@ -16,7 +16,7 @@ Async Zig as a library using stackful asymmetric coroutines.
 
 [![test](https://github.com/rsepassi/ulid-zig/actions/workflows/zig.yml/badge.svg)][ci]
 
-*[Tested][ci] weekly and on push on Windows, Linux, Mac with Zig v0.11*
+*[Tested][ci] weekly and on push on Linux, Mac with Zig v0.11*
 
 ---
 
@@ -90,13 +90,13 @@ Wonky bits:
   * May want to handle yield/next a bit differently. Possibly push it to a
     separate channel-like abstraction.
 
-## Todos
+## Future work
 
+* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv)
 * Task library
   * Schedulers (single and multi threaded)
   * Futures
   * Cancellation
-* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv)
 * Debugging
     * Coro names
     * Tracing tools
@@ -106,6 +106,7 @@ Wonky bits:
 * Coroutine-based parsing library
 * Make it so that it's trivial to switch to Zig's async when it's ready
 * Broader architecture support
+  * Windows
   * risc-v
   * 32-bit
   * WASM
