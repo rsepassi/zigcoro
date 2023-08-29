@@ -26,4 +26,4 @@ libcoro_stack_swap:
   popq %rbp
 
   # jump
-  ret
+  retq
