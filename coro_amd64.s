@@ -1,4 +1,6 @@
 # See System V x86-64 calling convention
+.globl _libcoro_stack_swap
+_libcoro_stack_swap:
 .globl libcoro_stack_swap
 libcoro_stack_swap:
   # Store caller registers on the current stack
