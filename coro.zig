@@ -7,7 +7,7 @@ const base = @import("coro_base.zig");
 //   * current_coro: set in ThreadState.switchTo
 //   * next_coro_id: set in ThreadState.nextCoroId
 // * Coro
-//   * resumer: set in ThreadState.switchTo
+//   * parent: set in ThreadState.switchTo
 //   * status:
 //     * Active, Suspended: set in ThreadState.switchTo
 //     * Done, Error: set in runcoro
@@ -83,31 +83,31 @@ pub fn xnext(coro: anytype) @TypeOf(coro).NextT {
     return coro.getStorage().popNext();
 }
 
-// Suspend the current coroutine, yielding control back to the last resumer.
+// Suspend the current coroutine, yielding control back to the parent.
 pub fn xsuspend() void {
     xsuspendSafe() catch unreachable;
 }
 pub fn xsuspendSafe() Error!void {
     if (thread_state.current_coro) |coro| {
         try check_stack_overflow(coro);
-        thread_state.switchOut(coro.resumer);
+        thread_state.switchOut(coro.parent);
     } else {
         return Error.SuspendFromMain;
     }
 }
 
 // Yield a value from the current coroutine and suspend, yielding control back
-// to the last resumer.
+// to the parent.
 pub fn xyield(val: anytype) void {
     const coro = thread_state.current_coro.?;
-    coro.yield(@ptrCast(&val));
+    coro.yieldfn(coro, @ptrCast(&val));
     xsuspend();
 }
 
 pub const Coro = struct {
     stack: StackT,
     impl: base.Coro,
-    resumer: *Coro = undefined,
+    parent: *Coro = undefined,
     statusval: AsyncStatus = .Suspended,
     allocator: ?std.mem.Allocator = null,
     id: CoroInvocationId,
@@ -131,10 +131,6 @@ pub const Coro = struct {
     pub fn status(self: Self) AsyncStatus {
         return self.statusval;
     }
-
-    fn yield(self: *Self, ptr: *const anyopaque) void {
-        self.yieldfn(self, ptr);
-    }
 };
 
 // Use CoroT(A, B).wrap(coro) to get a typed coroutine from an untyped one
@@ -148,7 +144,7 @@ const ThreadState = struct {
     root_coro: Coro = .{
         .stack = undefined,
         .impl = undefined,
-        .resumer = undefined,
+        .parent = undefined,
         .yieldfn = undefined,
         .id = CoroInvocationId.root(),
     },
@@ -165,10 +161,10 @@ const ThreadState = struct {
         self.switchTo(target, false);
     }
 
-    fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
+    fn switchTo(self: *@This(), target: *Coro, set_parent: bool) void {
         const resumer = self.current();
         if (!resumer.status().complete()) resumer.statusval = .Suspended;
-        if (set_resumer) target.resumer = resumer;
+        if (set_parent) target.parent = resumer;
         target.statusval = .Active;
         target.id.incr();
         self.current_coro = target;
@@ -298,9 +294,8 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
 
             // Wrapping function to create coroutine
             const runcoro = (struct {
-                fn runcoro(resumer: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
-                    const resumer_coro = @fieldParentPtr(Coro, "impl", resumer);
-                    _ = resumer_coro;
+                fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
+                    _ = from;
                     const target_coro = @fieldParentPtr(Coro, "impl", target);
 
                     // Run the user function.
@@ -319,7 +314,7 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
                     } else {
                         target_coro.statusval = .Done;
                     }
-                    thread_state.switchOut(target_coro.resumer);
+                    thread_state.switchOut(target_coro.parent);
 
                     // Never returns
                     const err_msg = "Cannot resume an already completed coroutine {any}";
