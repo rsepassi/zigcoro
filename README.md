@@ -14,7 +14,7 @@ Async Zig as a library using stackful asymmetric coroutines.
 
 ---
 
-[![test](https://github.com/rsepassi/ulid-zig/actions/workflows/zig.yml/badge.svg)][ci]
+[![test](https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml/badge.svg)][ci]
 
 *[Tested][ci] weekly and on push on Linux, Mac with Zig v0.11*
 
