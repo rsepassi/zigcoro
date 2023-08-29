@@ -24,7 +24,7 @@ const ThreadState = struct {
         .stack = undefined,
         .impl = undefined,
         .resumer = undefined,
-        .id = .{ .id = .{ .thread = 0, .coro = 0 } },
+        .id = CoroInvocationId.root(),
     },
     current_coro: ?*Coro = null,
     next_coro_id: usize = 1,
@@ -34,7 +34,7 @@ const ThreadState = struct {
         if (resumer.statusval != .Done) resumer.statusval = .Suspended;
         target.resumer = resumer;
         target.statusval = .Active;
-        target.id.invocation += 1;
+        target.id.incr();
         self.current_coro = target;
         target.impl.resumeFrom(&resumer.impl);
     }
@@ -152,8 +152,17 @@ const CoroId = struct {
 const CoroInvocationId = struct {
     id: CoroId,
     invocation: i64 = -1,
+
     fn init() @This() {
         return .{ .id = thread_state.nextCoroId() };
+    }
+
+    fn root() @This() {
+        return .{ .id = .{ .thread = 0, .coro = 0 } };
+    }
+
+    fn incr(self: *@This()) void {
+        self.invocation += 1;
     }
 };
 
