@@ -3,6 +3,7 @@ const Error = @import("errors.zig").Error;
 
 const ArchInfo = struct {
     num_registers: usize,
+    jump_idx: usize,
     assembly: []const u8,
 };
 const arch_info: ArchInfo = switch (@import("builtin").os.tag) {
@@ -40,10 +41,9 @@ pub const Coro = packed struct {
         const register_bytes = arch_info.num_registers * 8;
         if (register_bytes > stack.len) return Error.StackTooSmall;
         const register_space = stack[stack.len - register_bytes ..];
-        const jump_ptr: *Func = @ptrCast(&register_space[arch_info.jump_idx]);
+        const jump_ptr: *Func = @ptrCast(@alignCast(&register_space[arch_info.jump_idx * 8]));
         jump_ptr.* = func;
-        const rp = register_space.ptr;
-        return .{ .stack_pointer = rp };
+        return .{ .stack_pointer = register_space.ptr };
     }
 
     pub inline fn resumeFrom(self: *Self, from: *Self) void {
