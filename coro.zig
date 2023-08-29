@@ -13,52 +13,6 @@ const base = @import("coro_base.zig");
 //     * Done, Error: set in runcoro
 //   * id.invocation: incremented in ThreadState.switchTo
 
-threadlocal var thread_state: ThreadState = .{};
-const ThreadState = struct {
-    root_coro: Coro = .{
-        .stack = undefined,
-        .impl = undefined,
-        .resumer = undefined,
-        .yieldfn = undefined,
-        .id = CoroInvocationId.root(),
-    },
-    current_coro: ?*Coro = null,
-    next_coro_id: usize = 1,
-
-    // Called from resume, next, await
-    fn switchIn(self: *@This(), target: *Coro) void {
-        self.switchTo(target, true);
-    }
-
-    // Called from suspend, yield
-    fn switchOut(self: *@This(), target: *Coro) void {
-        self.switchTo(target, false);
-    }
-
-    fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
-        const resumer = self.current();
-        if (!resumer.status().complete()) resumer.statusval = .Suspended;
-        if (set_resumer) target.resumer = resumer;
-        target.statusval = .Active;
-        target.id.incr();
-        self.current_coro = target;
-        target.impl.resumeFrom(&resumer.impl);
-    }
-
-    fn nextCoroId(self: *@This()) CoroId {
-        const out = .{
-            .thread = std.Thread.getCurrentId(),
-            .coro = self.next_coro_id,
-        };
-        self.next_coro_id += 1;
-        return out;
-    }
-
-    fn current(self: *@This()) *Coro {
-        return self.current_coro orelse &self.root_coro;
-    }
-};
-
 // Public API
 // ============================================================================
 pub const Error = @import("errors.zig").Error;
@@ -100,7 +54,7 @@ pub fn xcoroAlloc(
     stack_size: ?usize,
     comptime options: AsyncOptions,
 ) !CoroFromFn(@TypeOf(func), options) {
-    var stack = try allocator.alignedAlloc(u8, stack_align, stack_size orelse default_stack_size);
+    var stack = try allocator.alignedAlloc(u8, base.stack_align, stack_size orelse default_stack_size);
     const out = try xcoro(func, args, stack, options);
     out.coro.allocator = allocator;
     return out;
@@ -183,6 +137,58 @@ pub const Coro = struct {
     }
 };
 
+// Use CoroT(A, B).wrap(coro) to get a typed coroutine from an untyped one
+pub fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
+    return CoroTInner(RetT, YieldT);
+}
+// ============================================================================
+
+threadlocal var thread_state: ThreadState = .{};
+const ThreadState = struct {
+    root_coro: Coro = .{
+        .stack = undefined,
+        .impl = undefined,
+        .resumer = undefined,
+        .yieldfn = undefined,
+        .id = CoroInvocationId.root(),
+    },
+    current_coro: ?*Coro = null,
+    next_coro_id: usize = 1,
+
+    // Called from resume, next, await
+    fn switchIn(self: *@This(), target: *Coro) void {
+        self.switchTo(target, true);
+    }
+
+    // Called from suspend, yield
+    fn switchOut(self: *@This(), target: *Coro) void {
+        self.switchTo(target, false);
+    }
+
+    fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
+        const resumer = self.current();
+        if (!resumer.status().complete()) resumer.statusval = .Suspended;
+        if (set_resumer) target.resumer = resumer;
+        target.statusval = .Active;
+        target.id.incr();
+        self.current_coro = target;
+        target.impl.resumeFrom(&resumer.impl);
+    }
+
+    fn nextCoroId(self: *@This()) CoroId {
+        const out = .{
+            .thread = std.Thread.getCurrentId(),
+            .coro = self.next_coro_id,
+        };
+        self.next_coro_id += 1;
+        return out;
+    }
+
+    fn current(self: *@This()) *Coro {
+        return self.current_coro orelse &self.root_coro;
+    }
+};
+
 fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
     const can_error = @typeInfo(RetT) == .ErrorUnion;
     return struct {
@@ -254,10 +260,6 @@ fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
     };
 }
 
-fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
-    return CoroTInner(RetT, YieldT);
-}
-
 fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
     const StorageT = CoroStorage(RetT, maybeYieldT);
     const can_error = @typeInfo(RetT) == .ErrorUnion;
@@ -278,7 +280,7 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
             storage: StorageT = .{},
         };
 
-        fn wrap(coro: *Coro) Self {
+        pub fn wrap(coro: *Coro) Self {
             return .{ .coro = coro };
         }
 
@@ -397,8 +399,6 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
         }
     };
 }
-
-// ============================================================================
 
 const CoroId = struct {
     thread: std.Thread.Id,
