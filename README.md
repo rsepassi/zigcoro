@@ -64,6 +64,11 @@ From a run on an M1 Mac Mini:
 ns/ctxswitch: 17
 ```
 
+Each coroutine uses, at minimum, 1 page of memory, typically 4KB on `x86_64`
+Linux. As long as the coroutine stacks can all be resident in memory,
+performance is ~preserved. Verified that a Linux box with ~400GB of memory
+can spawn and swap between 100M simple coroutines without issue.
+
 ## Current status
 
 *WIP as of 2023/08/28*
@@ -73,7 +78,6 @@ Not ready for use.
 MVP todos:
 * Addressing wonky bits (below)
 * Coroutines propagate errors on resume/next/await
-* Benchmark pushing number of coroutines and tracking memory
 
 Wonky bits:
 * Currently a coroutine has a parent as well as a last resumer. Upon

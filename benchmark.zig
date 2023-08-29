@@ -53,11 +53,11 @@ pub fn main() !void {
 
     // number of coroutines benchmark
     if (false) {
-        const num_coros = 700_000;
+        const num_coros = 100_000_000;
         var coros = try allocator.alloc(*libcoro.Coro, num_coros);
         defer allocator.free(coros);
 
-        var buf = try allocator.alloc(u8, num_coros * 1024 * 8);
+        var buf = try allocator.alloc(u8, num_coros * 1024 * 4);
         var fba = std.heap.FixedBufferAllocator.init(buf);
         const alloc2 = fba.allocator();
 
@@ -74,8 +74,8 @@ pub fn main() !void {
             const end = std.time.nanoTimestamp();
             const duration = end - start;
             const ns_per_bounce = @divFloor(duration, num_coros * 2);
+            std.debug.print("ns/ctxswitch: {d}\n", .{ns_per_bounce});
             if (i > 5 and ns_per_bounce > 100) {
-                std.debug.print("ns/ctxswitch: {d}\n", .{ns_per_bounce});
                 @panic("swap memory being used");
             }
         }
