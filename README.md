@@ -14,12 +14,8 @@ Async Zig as a library using stackful asymmetric coroutines.
 
 ---
 
-*WIP as of 2023/08/28*
-
 While waiting for Zig's async to land, I thought it'd be interesting to build
 out an async runtime as a library. This is the result of that effort.
-
-Currently supports arm64 (aka aarch64). Tested on M1 Mac.
 
 ## API
 
@@ -29,41 +25,14 @@ Create:
   xasyncAlloc: create coroutine with an Allocator
 Resume:
   xresume: resume coroutine until next suspend
-  next: resume coroutine until next yield
+  xnext: resume coroutine until next yield
   xawait: resume coroutine until complete
 Suspend:
   xsuspend: suspend the running coroutine
-  yield: suspend the running coroutine and yield a value
+  xyield: suspend the running coroutine and yield a value
 Destory: coro.deinit()
 Status: coro.status()
 ```
-
-## Todos
-
-Minimal:
-* User function error handling
-* Benchmark number of coroutines and memory
-
-Featureful:
-* Task library
-  * Schedulers (single and multi threaded)
-  * Futures
-  * Cancellation
-* Coro-friendly (i.e. non-blocking) concurrency primitives and IO (wrapping libuv)
-* Debugging
-    * Coro names
-    * Tracing tools
-    * Detect incomplete coroutines
-    * ASAN, TSAN, Valgrind support
-* Recursive data structure and coroutine based iterator library
-* Coroutine-based parsing library
-* Make it so that it's trivial to switch to Zig's async when it's ready
-* Architecture support
-  * x86 support
-  * risc-v
-  * 32-bit
-  * WASM
-  * Comptime?
 
 ## Performance
 
@@ -78,6 +47,56 @@ From a run on an M1 Mac Mini:
 > zig build benchmark
 ns/ctxswitch: 17
 ```
+
+## Current status
+
+*WIP as of 2023/08/28*
+
+Not ready for use.
+
+MVP todos:
+* Addressing wonky bits (below)
+* Coroutines propagate errors on resume/next/await
+* Benchmark pushing number of coroutines and tracking memory
+* x86 support.
+
+Wonky bits:
+* Currently a coroutine has a parent as well as a last resumer. Upon
+  yield/suspend, control is transferred to the last resumer. Upon return,
+  control is transferred to the parent. So, if `xawait(coro)` is called from a
+  coroutine other than the parent, `xawait` may never return. Similarly, if
+  calling `xresume`/`xnext` from a coroutine other than the parent, and the resumed
+  coroutine returns, control will be transferred to the parent, not the last
+  resumer, which may result in unexpected behavior.
+  * May want to enforce:
+    * that xresume is paired with xsuspend
+    * that xnext is paired with xyield
+    * that xawait is only called from the parent
+* The storage type for a coroutine is a little ill-defined when the coroutine
+  is both a generator and an awaitable. T, ?T, ??T.
+  * May want to handle yield/next a bit differently. Possibly push it to a
+    separate channel-like abstraction.
+
+## Todos
+
+* Task library
+  * Schedulers (single and multi threaded)
+  * Futures
+  * Cancellation
+* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv)
+* Debugging
+    * Coro names
+    * Tracing tools
+    * Detect incomplete coroutines
+    * ASAN, TSAN, Valgrind support
+* Recursive data structure and coroutine based iterator library
+* Coroutine-based parsing library
+* Make it so that it's trivial to switch to Zig's async when it's ready
+* Broader architecture support
+  * risc-v
+  * 32-bit
+  * WASM
+  * comptime?
 
 ## Inspirations
 
