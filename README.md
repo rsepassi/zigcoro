@@ -19,11 +19,6 @@ Async Zig as a library using stackful asymmetric coroutines.
 *[Tested][ci] weekly and on push on {Windows, Linux, Mac} `x86_64` with Zig v0.11. Also
 supports {Linux, Mac} `aarch64`.*
 
----
-
-While waiting for Zig's async to land, I thought it'd be interesting to build
-out an async runtime as a library. This is the result of that effort.
-
 ## Current status
 
 *As of 2023/08/29*
@@ -45,6 +40,101 @@ Suspend:
   xyield: suspend the running coroutine and yield a value
 Destory: coro.deinit()
 Status: coro.status()
+```
+
+## Examples
+
+Explicit resume/suspend (`xresume`, `xsuspend`):
+
+```zig
+fn explicit_coro(x: *i32) void {
+    x.* += 1;
+    libcoro.xsuspend();
+    x.* += 3;
+}
+
+test "explicit" {
+    const allocator = std.heap.c_allocator;
+    var x: i32 = 0;
+
+    // Use xasync or xasyncAlloc to create a coroutine
+    var coro = try libcoro.xasyncAlloc(
+        explicit_coro,
+        .{&x},
+        allocator,
+        null,
+        .{},
+    );
+    defer coro.deinit();
+
+    // Coroutines start off paused.
+    try std.testing.expectEqual(x, 0);
+
+    // xresume suspends the current coroutine and resumes the passed coroutine.
+    libcoro.xresume(coro);
+
+    // When the coroutine suspends, it yields control back to the caller.
+    try std.testing.expectEqual(coro.status(), .Suspended);
+    try std.testing.expectEqual(x, 1);
+
+    // xresume can be called until the coroutine is Done
+    libcoro.xresume(coro);
+    try std.testing.expectEqual(x, 4);
+    try std.testing.expectEqual(coro.status(), .Done);
+}
+```
+
+Generator (`xnext`, `xyield`):
+
+```zig
+fn generator(end: usize) void {
+    for (0..end) |i| {
+        libcoro.xyield(i);
+    }
+}
+
+test "generator" {
+    const allocator = std.heap.c_allocator;
+    const end: usize = 10;
+    var gen = try libcoro.xasyncAlloc(
+        generator,
+        .{end},
+        allocator,
+        null,
+        .{ .YieldT = usize },
+    );
+    defer gen.deinit();
+    var i: usize = 0;
+    while (libcoro.xnext(gen)) |val| : (i += 1) {
+        try std.testing.expectEqual(i, val);
+    }
+    try std.testing.expectEqual(i, 10);
+}
+```
+
+Await (`xawait`):
+
+```zig
+fn inner() usize {
+    libcoro.xsuspend();
+    return 10;
+}
+
+fn nested() !usize {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(inner, .{}, allocator, null, .{});
+    defer coro.deinit();
+    const x = libcoro.xawait(coro);
+    return x + 7;
+}
+
+test "nested" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(nested, .{}, allocator, null, .{});
+    defer coro.deinit();
+    const val = try libcoro.xawait(coro);
+    try std.testing.expectEqual(val, 17);
+}
 ```
 
 ## Performance

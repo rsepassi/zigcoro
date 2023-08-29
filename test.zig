@@ -1,39 +1,39 @@
 const std = @import("std");
 const libcoro = @import("libcoro");
 
-fn simple_coro(x: *i32) void {
+fn explicit_coro(x: *i32) void {
     x.* += 1;
-
-    // Use xsuspend to switch back to the calling coroutine (which may be the main
-    // thread)
     libcoro.xsuspend();
-
     x.* += 3;
 }
 
-test "simple" {
+test "explicit" {
     const allocator = std.heap.c_allocator;
-
-    // Create a coroutine.
-    // Each coroutine has a dedicated stack. You can specify an allocator and
-    // stack size (xasyncAlloc) or provide a stack directly (xasync).
     var x: i32 = 0;
-    var coro = try libcoro.xasyncAlloc(simple_coro, .{&x}, allocator, null, .{});
+
+    // Use xasync or xasyncAlloc to create a coroutine
+    var coro = try libcoro.xasyncAlloc(
+        explicit_coro,
+        .{&x},
+        allocator,
+        null,
+        .{},
+    );
     defer coro.deinit();
 
     // Coroutines start off paused.
     try std.testing.expectEqual(x, 0);
 
-    // xresume switches to the coroutine.
+    // xresume suspends the current coroutine and resumes the passed coroutine.
     libcoro.xresume(coro);
 
-    // A coroutine can xsuspend, yielding control back to its caller.
+    // When the coroutine suspends, it yields control back to the caller.
+    try std.testing.expectEqual(coro.status(), .Suspended);
     try std.testing.expectEqual(x, 1);
 
+    // xresume can be called until the coroutine is Done
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 4);
-
-    // Finished coroutines are marked done
     try std.testing.expectEqual(coro.status(), .Done);
 }
 
@@ -119,18 +119,25 @@ test "stack overflow" {
     libcoro.xresume(coro);
 }
 
-fn generator() void {
-    for (0..10) |i| {
+fn generator(end: usize) void {
+    for (0..end) |i| {
         libcoro.xyield(i);
     }
 }
 
 test "generator" {
     const allocator = std.heap.c_allocator;
-    var coro = try libcoro.xasyncAlloc(generator, .{}, allocator, null, .{ .YieldT = usize });
-    defer coro.deinit();
+    const end: usize = 10;
+    var gen = try libcoro.xasyncAlloc(
+        generator,
+        .{end},
+        allocator,
+        null,
+        .{ .YieldT = usize },
+    );
+    defer gen.deinit();
     var i: usize = 0;
-    while (libcoro.xnext(coro)) |val| : (i += 1) {
+    while (libcoro.xnext(gen)) |val| : (i += 1) {
         try std.testing.expectEqual(i, val);
     }
     try std.testing.expectEqual(i, 10);
@@ -141,9 +148,9 @@ fn inner() usize {
     return 10;
 }
 
-fn nested() usize {
+fn nested() !usize {
     const allocator = std.heap.c_allocator;
-    var coro = libcoro.xasyncAlloc(inner, .{}, allocator, null, .{}) catch unreachable;
+    var coro = try libcoro.xasyncAlloc(inner, .{}, allocator, null, .{});
     defer coro.deinit();
     const x = libcoro.xawait(coro);
     return x + 7;
@@ -153,7 +160,7 @@ test "nested" {
     const allocator = std.heap.c_allocator;
     var coro = try libcoro.xasyncAlloc(nested, .{}, allocator, null, .{});
     defer coro.deinit();
-    const val = libcoro.xawait(coro);
+    const val = try libcoro.xawait(coro);
     try std.testing.expectEqual(val, 17);
 }
 
