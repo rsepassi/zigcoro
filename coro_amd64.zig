@@ -28,7 +28,7 @@ pub const Coro = packed struct {
         const sp = stack.ptr + stack.len;
 
         // Set last register to nullptr
-        const last: usize = @ptrCast(@alignCast(sp - @sizeOf(usize)));
+        const last: *usize = @ptrCast(@alignCast(sp - @sizeOf(usize)));
         last.* = 0;
 
         // Set jump register (second to last value on the stack) to func
