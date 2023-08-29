@@ -2,6 +2,7 @@ const std = @import("std");
 const Error = @import("errors.zig").Error;
 
 pub const stack_align = 16;
+const num_registers = 20;
 
 extern fn libcoro_stack_swap(current: *Coro, target: *Coro) void;
 comptime {
@@ -18,7 +19,9 @@ pub const Coro = packed struct {
     ) callconv(.C) noreturn;
 
     pub fn init(func: Func, stack: []align(stack_align) u8) !Self {
-        const register_bytes = 0xa0;
+        if (@sizeOf(usize) != 8) @compileError("arm64 usize expected to take 8 bytes");
+        if (@sizeOf(*Func) != 8) @compileError("arm64 function pointer expected to take 8 bytes");
+        const register_bytes = num_registers * 8;
         if (stack.len < register_bytes) return Error.StackTooSmall;
 
         // Top of the stack is the end of stack

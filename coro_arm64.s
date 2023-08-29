@@ -1,6 +1,4 @@
-# See libcoro_stack_swap for docstring
-# arm64 stack swap
-# See arm64 Procedure Call Standard
+# See arm64 procedure call standard
 .global _libcoro_stack_swap
 _libcoro_stack_swap:
 
