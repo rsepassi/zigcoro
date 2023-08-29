@@ -2,11 +2,11 @@ const std = @import("std");
 const Error = @import("errors.zig").Error;
 
 pub const stack_align = 16;
-const num_registers = 6;
+const num_registers = 30;
 
 extern fn libcoro_stack_swap(current: *Coro, target: *Coro) void;
 comptime {
-    asm (@embedFile("coro_amd64.s"));
+    asm (@embedFile("coro_amd64_windows.s"));
 }
 
 pub const Coro = packed struct {
