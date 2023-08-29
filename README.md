@@ -16,7 +16,8 @@ Async Zig as a library using stackful asymmetric coroutines.
 
 [![test][ci-badge]][ci]
 
-*[Tested][ci] weekly and on push on Linux, Mac with Zig v0.11*
+*[Tested][ci] weekly and on push on {Linux, Mac} `x86_64` with Zig v0.11. Also
+supports {Linux, Mac} `aarch64`.*
 
 ---
 
