@@ -179,3 +179,51 @@ test "yield and return" {
     if (@TypeOf(val) != usize) @compileError("bad type");
     try std.testing.expectEqual(val, 10);
 }
+
+fn anerror() !usize {
+    if (true) return error.SomeError;
+    return 10;
+}
+
+test "await error" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(anerror, .{}, allocator, null, .{});
+    defer coro.deinit();
+    const val = libcoro.xawait(coro);
+    try std.testing.expectEqual(val, error.SomeError);
+    try std.testing.expectEqual(coro.status(), .Error);
+}
+
+fn yielderror() !void {
+    for (0..2) |_| {
+        const x: usize = 7;
+        libcoro.xyield(x);
+    }
+    if (true) return error.SomeError;
+}
+
+test "yield error" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(yielderror, .{}, allocator, null, .{ .YieldT = usize });
+    defer coro.deinit();
+    _ = try libcoro.xnext(coro);
+    _ = try libcoro.xnext(coro);
+    const err = libcoro.xnext(coro);
+    try std.testing.expectEqual(err, error.SomeError);
+    try std.testing.expectEqual(coro.status(), .Error);
+}
+
+fn resumeerror() !void {
+    libcoro.xsuspend();
+    if (true) return error.SomeError;
+}
+
+test "resume error" {
+    const allocator = std.heap.c_allocator;
+    var coro = try libcoro.xasyncAlloc(resumeerror, .{}, allocator, null, .{ .YieldT = usize });
+    defer coro.deinit();
+    _ = try libcoro.xresume(coro);
+    const err = libcoro.xresume(coro);
+    try std.testing.expectEqual(err, error.SomeError);
+    try std.testing.expectEqual(coro.status(), .Error);
+}

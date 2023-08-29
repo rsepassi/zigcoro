@@ -10,7 +10,7 @@ const base = @import("coro_base.zig");
 //   * resumer: set in ThreadState.switchTo
 //   * status:
 //     * Active, Suspended: set in ThreadState.switchTo
-//     * Done: set in runcoro
+//     * Done, Error: set in runcoro
 //   * id.invocation: incremented in ThreadState.switchTo
 
 threadlocal var thread_state: ThreadState = .{};
@@ -37,7 +37,7 @@ const ThreadState = struct {
 
     fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
         const resumer = self.current();
-        if (resumer.statusval != .Done) resumer.statusval = .Suspended;
+        if (!resumer.status().complete()) resumer.statusval = .Suspended;
         if (set_resumer) target.resumer = resumer;
         target.statusval = .Active;
         target.id.incr();
@@ -74,6 +74,11 @@ pub const AsyncStatus = enum {
     Suspended,
     Active,
     Done,
+    Error,
+
+    fn complete(self: @This()) bool {
+        return self == .Error or self == .Done;
+    }
 };
 
 // Create a coroutine, initially suspended.
@@ -102,15 +107,16 @@ pub fn xasyncAlloc(
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
-// coro: Coro, CoroT
-pub fn xresume(coro: anytype) void {
+// coro: CoroT
+pub fn xresume(coro: anytype) @TypeOf(coro).ResumeT {
     thread_state.switchIn(getcoro(coro));
+    return coro.getError();
 }
 
 // Await the result of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
 pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
-    while (coro.status() != .Done) {
+    while (!coro.status().complete()) {
         thread_state.switchIn(coro.coro);
     }
     return coro.getStorage().popAwait();
@@ -118,7 +124,7 @@ pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
 
 // Await the next yield of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
-pub fn xnext(coro: anytype) ?@TypeOf(coro).YieldT {
+pub fn xnext(coro: anytype) @TypeOf(coro).NextT {
     thread_state.switchIn(coro.coro);
     return coro.getStorage().popNext();
 }
@@ -178,8 +184,10 @@ pub const Coro = struct {
 };
 
 fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
+    const can_error = @typeInfo(RetT) == .ErrorUnion;
     return struct {
         const YieldT = (mYieldT orelse RetT);
+        const NextT = if (can_error) anyerror!?YieldT else ?YieldT;
         storage: ?union(enum) {
             ret: RetT,
             yield: YieldT,
@@ -206,13 +214,40 @@ fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
             self.storage = .{ .yield = val };
         }
 
-        fn popNext(self: *Self) ?YieldT {
+        fn popNext(self: *Self) NextT {
             if (self.storage == null) return null;
             switch (self.storage.?) {
-                .ret => return null,
+                .ret => |val| {
+                    if (can_error) {
+                        if (val) {
+                            return null;
+                        } else |err| {
+                            return err;
+                        }
+                    } else {
+                        return null;
+                    }
+                },
                 .yield => |val| {
                     self.storage = null;
                     return val;
+                },
+            }
+        }
+
+        fn getError(self: Self) ?anyerror {
+            if (!can_error) return null;
+            if (self.storage == null) return null;
+            switch (self.storage.?) {
+                .ret => |val| {
+                    if (val) {
+                        return null;
+                    } else |err| {
+                        return err;
+                    }
+                },
+                .yield => {
+                    return null;
                 },
             }
         }
@@ -225,12 +260,14 @@ fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
 
 fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
     const StorageT = CoroStorage(RetT, maybeYieldT);
+    const can_error = @typeInfo(RetT) == .ErrorUnion;
 
     return struct {
         const Self = @This();
 
         const AwaitT = RetT;
-        const YieldT = StorageT.YieldT;
+        const ResumeT = if (can_error) anyerror!void else void;
+        const NextT = StorageT.NextT;
 
         coro: *Coro,
 
@@ -270,7 +307,16 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
 
                     // Mark the coroutine done and resume the calling coroutine.
                     target_state.state0.storage.setReturn(retval);
-                    target_coro.statusval = .Done;
+
+                    if (@typeInfo(@TypeOf(retval)) == .ErrorUnion) {
+                        if (std.meta.isError(retval)) {
+                            target_coro.statusval = .Error;
+                        } else {
+                            target_coro.statusval = .Done;
+                        }
+                    } else {
+                        target_coro.statusval = .Done;
+                    }
                     thread_state.switchOut(target_coro.resumer);
 
                     // Never returns
@@ -288,7 +334,7 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
             const yieldfn = (struct {
                 fn yieldfn(coro: *Coro, ptr: *const anyopaque) void {
                     const target_state = @fieldParentPtr(State, "state0", @fieldParentPtr(State0, "coro", coro));
-                    const val: *const YieldT = @ptrCast(@alignCast(ptr));
+                    const val: *const StorageT.YieldT = @ptrCast(@alignCast(ptr));
                     target_state.state0.storage.setYield(val.*);
                 }
             }).yieldfn;
@@ -342,6 +388,12 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
         fn getStorage(self: Self) *StorageT {
             const state = @fieldParentPtr(State0, "coro", self.coro);
             return &state.storage;
+        }
+
+        fn getError(self: Self) ResumeT {
+            if (!can_error) return;
+            const err = self.getStorage().getError();
+            if (err) |e| return e;
         }
     };
 }

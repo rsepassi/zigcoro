@@ -24,6 +24,12 @@ supports {Linux, Mac} `aarch64`.*
 While waiting for Zig's async to land, I thought it'd be interesting to build
 out an async runtime as a library. This is the result of that effort.
 
+## Current status
+
+*As of 2023/08/29*
+
+Alpha. Basic API implemented.
+
 ## API
 
 ```
@@ -68,16 +74,6 @@ Each coroutine uses, at minimum, 1 page of memory, typically 4KB on `x86_64`
 Linux. As long as the coroutine stacks can all be resident in memory,
 performance is ~preserved. Verified that a Linux box with ~400GB of memory
 can spawn and swap between 100M simple coroutines without issue.
-
-## Current status
-
-*WIP as of 2023/08/28*
-
-Not ready for use.
-
-MVP todos:
-* Coroutines propagate errors on resume/next/await
-* Replace some panics/unreachables with errors where it makes sense
 
 ## Future work
 
