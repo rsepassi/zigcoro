@@ -121,7 +121,7 @@ test "stack overflow" {
 
 fn generator() void {
     for (0..10) |i| {
-        libcoro.yield(i);
+        libcoro.xyield(i);
     }
 }
 
@@ -130,7 +130,7 @@ test "generator" {
     var coro = try libcoro.xasyncAlloc(generator, .{}, allocator, null, .{ .yieldT = usize });
     defer coro.deinit();
     var i: usize = 0;
-    while (libcoro.next(coro)) |val| : (i += 1) {
+    while (libcoro.xnext(coro)) |val| : (i += 1) {
         try std.testing.expectEqual(i, val);
     }
     try std.testing.expectEqual(i, 10);
@@ -156,3 +156,35 @@ test "nested" {
     const val = libcoro.xawait(coro);
     try std.testing.expectEqual(val, 17);
 }
+
+// fn corofn1() usize {
+//     libcoro.xsuspend();
+//     const val: usize = 7;
+//     libcoro.yield(val);
+//     return 10;
+// }
+//
+// fn corofn2(coro: *libcoro.Coro) usize {
+//     const coroT = libcoro.CoroT2(usize, .{ .yieldT = usize }).wrap(coro);
+//     const val = libcoro.next(coroT).?;
+//     std.debug.assert(val == 7);
+//     libcoro.yield(val + 1);
+//     return libcoro.xawait(coroT) + 22;
+// }
+//
+// test "current is not resume" {
+//     const allocator = std.heap.c_allocator;
+//     var coro1 = try libcoro.xasyncAlloc(corofn1, .{}, allocator, null, .{ .yieldT = usize });
+//     defer coro1.deinit();
+//
+//     // Parent (original resumer) is main
+//     libcoro.xresume(coro1);
+//
+//     var coro2 = try libcoro.xasyncAlloc(corofn2, .{coro1.coro}, allocator, null, .{ .yieldT = usize });
+//     defer coro2.deinit();
+//
+//     const val = libcoro.next(coro2);
+//     try std.testing.expectEqual(val, 8);
+//     const retval = libcoro.xawait(coro2);
+//     try std.testing.expectEqual(retval, 33);
+// }
