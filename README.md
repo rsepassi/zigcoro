@@ -14,6 +14,12 @@ Async Zig as a library using stackful asymmetric coroutines.
 
 ---
 
+[![test](https://github.com/rsepassi/ulid-zig/actions/workflows/zig.yml/badge.svg)][ci]
+
+*[Tested][ci] weekly and on push on Windows, Linux, Mac with Zig v0.11*
+
+---
+
 While waiting for Zig's async to land, I thought it'd be interesting to build
 out an async runtime as a library. This is the result of that effort.
 
@@ -113,3 +119,4 @@ Wonky bits:
 * https://github.com/kprotty/zefi
 
 [coropaper]: https://dl.acm.org/doi/pdf/10.1145/1462166.1462167
+[ci]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml?query=branch%3Amain
