@@ -109,7 +109,7 @@ pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
 
 // Await the next yield of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
-pub fn next(coro: anytype) @TypeOf(coro).YieldT {
+pub fn xnext(coro: anytype) @TypeOf(coro).YieldT {
     thread_state.switchTo(coro.coro);
     const state = @fieldParentPtr(@TypeOf(coro).State0, "coro", coro.coro);
     const out = state.retval;
@@ -132,7 +132,7 @@ pub fn xsuspendSafe() Error!void {
 
 // Yield a value from the current coroutine and suspend, yielding control back
 // to the last resumer.
-pub fn yield(val: anytype) void {
+pub fn xyield(val: anytype) void {
     const coro = CoroT(OptionalOf(@TypeOf(val)), .{}).wrap(
         thread_state.current_coro.?,
     );
@@ -181,11 +181,11 @@ pub const Coro = struct {
     }
 };
 
-pub fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
+fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
     const StorageT = blk: {
         if (options.yieldT) |T| {
             if (RetT != void and T != RetT) @compileError("yield type must match return type, or return type must be void");
-            if (RetT == void) break :blk OptionalOf(T);
+            break :blk OptionalOf(T);
         } else {
             break :blk RetT;
         }
@@ -226,6 +226,7 @@ pub fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
             // Wrapping function to create coroutine
             const runcoro = (struct {
                 fn runcoro(resumer: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
+                    const resumer_coro = @fieldParentPtr(Coro, "impl", resumer);
                     const target_coro = @fieldParentPtr(Coro, "impl", target);
 
                     // Run the user function.
@@ -238,7 +239,7 @@ pub fn CoroT(comptime RetT: type, comptime options: AsyncOptions) type {
                     }
                     target_coro.statusval = .Done;
                     // std.debug.print("runcoro done: {any}\n", .{target_coro.id});
-                    thread_state.switchTo(@fieldParentPtr(Coro, "impl", resumer));
+                    thread_state.switchTo(resumer_coro);
 
                     // Never returns
                     const err_msg = "Cannot resume an already completed coroutine {any}";
