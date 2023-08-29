@@ -5,7 +5,7 @@ const ArchInfo = struct {
     num_registers: usize,
     assembly: []u8,
 };
-const arch_info = switch (@import("builtin").os.tag) {
+const arch_info: ArchInfo = switch (@import("builtin").os.tag) {
     .windows => .{
         .num_registers = 30,
         .assembly = @embedFile("coro_amd64_windows.s"),
