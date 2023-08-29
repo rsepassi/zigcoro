@@ -46,7 +46,8 @@ Status: coro.status()
 The benchmark measures the cost of a context switch from one coroutine to
 another by bouncing back and forth between 2 coroutines millions of times.
 
-From a run on a AMD Ryzen Threadripper PRO 5995WX:
+From a run on an AMD Ryzen Threadripper PRO 5995WX:
+
 ```
 > zig env | grep target
  "target": "x86_64-linux.5.19...5.19-gnu.2.19"
