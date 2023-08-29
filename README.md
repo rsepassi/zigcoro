@@ -21,9 +21,15 @@ supports {Linux, Mac} `aarch64`.*
 
 ## Current status
 
-*As of 2023/08/29*
+*Updated 2023/08/29*
 
-Alpha. Basic API implemented.
+Alpha.
+
+I don't expect the API to change significantly, but as I explore libraries and
+integrations things may shift.
+
+Next steps are to connect this with libuv or libxev and further explore
+cooperative multitasking.
 
 ## API
 
