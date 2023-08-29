@@ -168,20 +168,18 @@ can spawn and swap between 100M simple coroutines without issue.
 
 ## Future work
 
-* Coro-friendly non-blocking concurrency primitives and IO (wrapping libuv or
-  libxev)
-* Task library
-  * Schedulers (single and multi threaded)
-  * Futures
-  * Cancellation
+* Libraries
+  * Concurrency primitives and IO (with libuv or libxev)
+  * Task library: schedulers, futures, cancellation
+  * Recursive data structure iterators
+  * Parsers
 * Debugging
     * Coro names
     * Tracing tools
     * Detect incomplete coroutines
     * ASAN, TSAN, Valgrind support
-* Recursive data structure and coroutine based iterator library
-* Coroutine-based parsing library
-* Make it so that it's trivial to switch to Zig's async when it's ready
+* Make it so that it's as easy as possible to switch to Zig's async when it's
+  ready
 * C API
 * Broader architecture support
   * risc-v
