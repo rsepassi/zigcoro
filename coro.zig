@@ -1,13 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const base = switch (builtin.cpu.arch) {
-    .aarch64 => @import("coro_arm64.zig"),
-    .x86_64 => switch (builtin.os.tag) {
-        .windows => @import("coro_amd64_windows.zig"),
-        else => @import("coro_amd64.zig"),
-    },
-    else => @compileError("Unsupported cpu architecture"),
-};
+const base = @import("coro_base.zig");
 
 // libcoro mutable state:
 // * ThreadState.current_coro: set in ThreadState.switchTo
