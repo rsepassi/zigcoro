@@ -39,6 +39,14 @@ Status: coro.status()
 The benchmark measures the cost of a context switch from one coroutine to
 another by bouncing back and forth between 2 coroutines millions of times.
 
+From a run on a AMD Ryzen Threadripper PRO 5995WX:
+```
+> zig env | grep target
+ "target": "x86_64-linux.5.19...5.19-gnu.2.19"
+> zig build benchmark
+ns/ctxswitch: 7
+```
+
 From a run on an M1 Mac Mini:
 
 ```
@@ -58,7 +66,6 @@ MVP todos:
 * Addressing wonky bits (below)
 * Coroutines propagate errors on resume/next/await
 * Benchmark pushing number of coroutines and tracking memory
-* x86 support.
 
 Wonky bits:
 * Currently a coroutine has a parent as well as a last resumer. Upon
@@ -102,6 +109,7 @@ Wonky bits:
 
 * ["Revisiting Coroutines"][coropaper] by de Moura & Ierusalimschy
 * https://github.com/edubart/minicoro
+* https://github.com/kurocha/coroutine
 * https://github.com/kprotty/zefi
 
 [coropaper]: https://dl.acm.org/doi/pdf/10.1145/1462166.1462167

@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     coro_test.addModule("libcoro", coro);
+    coro_test.linkLibC();
 
     // Benchmark
     const bench = b.addExecutable(.{
@@ -25,6 +26,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = .ReleaseFast,
     });
     bench.addModule("libcoro", coro);
+    bench.linkLibC();
     const bench_step = b.step("benchmark", "Run benchmark");
     bench_step.dependOn(&b.addRunArtifact(bench).step);
 
