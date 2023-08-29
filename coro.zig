@@ -82,7 +82,7 @@ pub const AsyncStatus = enum {
 };
 
 // Create a coroutine, initially suspended.
-pub fn xasync(
+pub fn xcoro(
     func: anytype,
     args: anytype,
     stack: StackT,
@@ -93,7 +93,7 @@ pub fn xasync(
 
 // Create a coroutine with an allocated stack, initially suspended.
 // Caller is responsible for calling deinit() to free allocated stack.
-pub fn xasyncAlloc(
+pub fn xcoroAlloc(
     func: anytype,
     args: anytype,
     allocator: std.mem.Allocator,
@@ -101,7 +101,7 @@ pub fn xasyncAlloc(
     comptime options: AsyncOptions,
 ) !CoroFromFn(@TypeOf(func), options) {
     var stack = try allocator.alignedAlloc(u8, stack_align, stack_size orelse default_stack_size);
-    const out = try xasync(func, args, stack, options);
+    const out = try xcoro(func, args, stack, options);
     out.coro.allocator = allocator;
     return out;
 }

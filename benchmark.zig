@@ -27,7 +27,7 @@ pub fn main() !void {
         // warmup
         num_bounces = 100_000;
         {
-            var test_coro = try libcoro.xasync(testFn, .{}, stack, .{});
+            var test_coro = try libcoro.xcoro(testFn, .{}, stack, .{});
             for (0..num_bounces) |_| {
                 libcoro.xresume(test_coro);
             }
@@ -36,7 +36,7 @@ pub fn main() !void {
 
         num_bounces = 20_000_000;
         {
-            var test_coro = try libcoro.xasync(testFn, .{}, stack, .{});
+            var test_coro = try libcoro.xcoro(testFn, .{}, stack, .{});
 
             const start = std.time.nanoTimestamp();
             for (0..num_bounces) |_| {
@@ -62,7 +62,7 @@ pub fn main() !void {
         const alloc2 = fba.allocator();
 
         for (0..num_coros) |i| {
-            const coro = try libcoro.xasyncAlloc(suspendRepeat, .{}, alloc2, null, .{});
+            const coro = try libcoro.xcoroAlloc(suspendRepeat, .{}, alloc2, null, .{});
             coros[i] = coro.coro;
         }
 

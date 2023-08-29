@@ -29,8 +29,8 @@ Alpha. Basic API implemented.
 
 ```
 Create:
-  xasync: create coroutine with a caller-provided stack
-  xasyncAlloc: create coroutine with an Allocator
+  xcoro: create coroutine with a caller-provided stack
+  xcoroAlloc: create coroutine with an Allocator
 Resume:
   xresume: resume coroutine until next suspend
   xnext: resume coroutine until next yield
@@ -57,8 +57,8 @@ test "explicit" {
     const allocator = std.heap.c_allocator;
     var x: i32 = 0;
 
-    // Use xasync or xasyncAlloc to create a coroutine
-    var coro = try libcoro.xasyncAlloc(
+    // Use xcoro or xcoroAlloc to create a coroutine
+    var coro = try libcoro.xcoroAlloc(
         explicit_coro,
         .{&x},
         allocator,
@@ -96,7 +96,7 @@ fn generator(end: usize) void {
 test "generator" {
     const allocator = std.heap.c_allocator;
     const end: usize = 10;
-    var gen = try libcoro.xasyncAlloc(
+    var gen = try libcoro.xcoroAlloc(
         generator,
         .{end},
         allocator,
@@ -122,7 +122,7 @@ fn inner() usize {
 
 fn nested() !usize {
     const allocator = std.heap.c_allocator;
-    var coro = try libcoro.xasyncAlloc(inner, .{}, allocator, null, .{});
+    var coro = try libcoro.xcoroAlloc(inner, .{}, allocator, null, .{});
     defer coro.deinit();
     const x = libcoro.xawait(coro);
     return x + 7;
@@ -130,7 +130,7 @@ fn nested() !usize {
 
 test "nested" {
     const allocator = std.heap.c_allocator;
-    var coro = try libcoro.xasyncAlloc(nested, .{}, allocator, null, .{});
+    var coro = try libcoro.xcoroAlloc(nested, .{}, allocator, null, .{});
     defer coro.deinit();
     const val = try libcoro.xawait(coro);
     try std.testing.expectEqual(val, 17);
