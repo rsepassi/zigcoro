@@ -191,8 +191,11 @@ ns/ctxswitch: 17
 
 This benchmark spawns a number of coroutines and iterates through them bouncing
 control back and forth, periodically logging the cost of context switching. As
-you increase the number of coroutines, you'll notice a cliff in performance.
+you increase the number of coroutines, you'll notice a cliff in performance or OOM.
 This will be highly dependent on the amount of free memory on the system.
+
+Note also that zigcoro's default stack size is 4096B, which is the typical size of
+a single page on many systems.
 
 From a run on an AMD Ryzen Threadripper PRO 5995WX:
 
@@ -200,7 +203,27 @@ From a run on an AMD Ryzen Threadripper PRO 5995WX:
 > zig env | grep target
  "target": "x86_64-linux.5.19...5.19-gnu.2.19"
 
-# TODO
+> cat /proc/meminfo | head -n3
+MemTotal:       527970488 kB
+MemFree:        462149848 kB
+MemAvailable:   515031792 kB
+
+> zig build benchmark -- --ncoros 1_000_000
+Running benchmark ncoros
+Running 1000000 coroutines for 1000 rounds
+ns/ctxswitch: 57
+...
+
+> zig build benchmark -- --ncoros 100_000_000
+Running benchmark ncoros
+Running 100000000 coroutines for 1000 rounds
+ns/ctxswitch: 57
+...
+
+> zig build benchmark -- --ncoros 200_000_000
+Running benchmark ncoros
+Running 200000000 coroutines for 1000 rounds
+error: OutOfMemory
 ```
 
 From a run on an M1 Mac Mini:
@@ -215,23 +238,14 @@ From a run on an M1 Mac Mini:
 Running benchmark ncoros
 Running 800000 coroutines for 1000 rounds
 ns/ctxswitch: 26
-ns/ctxswitch: 26
-ns/ctxswitch: 26
 ...
 
 > zig build benchmark -- --ncoros 900_000
 Running benchmark ncoros
 Running 900000 coroutines for 1000 rounds
 ns/ctxswitch: 233
-ns/ctxswitch: 234
-ns/ctxswitch: 237
 ...
 ```
-
-Each coroutine uses, at minimum, 1 page of memory, typically 4KB on `x86_64`
-Linux. As long as the coroutine stacks can all be resident in memory,
-performance is ~preserved. Verified that a Linux box with ~400GB of memory
-can spawn and swap between 100M simple coroutines without issue.
 
 ## Future work
 

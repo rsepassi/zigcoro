@@ -123,16 +123,18 @@ fn ncorosBm(num_coros: usize) !void {
         coros[i] = coro.coro;
     }
 
+    const batching: usize = if (num_coros >= 10_000_000) 1 else 10;
+
     var start = std.time.nanoTimestamp();
     for (0..rounds) |i| {
         for (coros) |coro| {
             libcoro.xresume(coro);
         }
-        if ((i + 1) % 10 == 0) {
+        if ((i + 1) % batching == 0) {
             const end = std.time.nanoTimestamp();
             const duration = end - start;
-            const ns_per_bounce = @divFloor(duration, 10 * num_coros * 2);
-            if (i > 30) { // warmup
+            const ns_per_bounce = @divFloor(duration, batching * num_coros * 2);
+            if (i > (3 * batching)) { // warmup
                 std.debug.print("ns/ctxswitch: {d}\n", .{ns_per_bounce});
             }
             start = std.time.nanoTimestamp();
