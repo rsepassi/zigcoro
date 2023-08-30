@@ -28,8 +28,8 @@ Alpha.
 I don't expect the API to change significantly, but as I explore libraries and
 integrations things may shift.
 
-Next steps are to connect this with libuv or libxev and further explore
-cooperative multitasking.
+Actively working on [libxev][libxev] integration on a [branch][libxev-branch]
+for async IO.
 
 ## API
 
@@ -286,3 +286,6 @@ Contributions welcome.
 [coropaper]: https://dl.acm.org/doi/pdf/10.1145/1462166.1462167
 [ci]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml?query=branch%3Amain
 [ci-badge]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml/badge.svg?query=branch%3Amain
+[libxev]: https://github.com/mitchellh/libxev
+[libxev-branch]: https://github.com/rsepassi/zigcoro/pull/5
+
