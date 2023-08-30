@@ -38,9 +38,9 @@ fn sleep(ms: u64) xev.Timer.RunError!void {
     var c: xev.Completion = .{};
     w.run(env.loop, &c, ms, @TypeOf(data), &data, &@TypeOf(data).callback);
 
-    std.debug.print("sleep suspend {d}\n", .{std.time.timestamp()});
+    std.debug.print("sleep suspend {d}\n", .{std.time.milliTimestamp()});
     libcoro.xsuspend();
-    std.debug.print("sleep done    {d}\n", .{std.time.timestamp()});
+    std.debug.print("sleep done    {d}\n", .{std.time.milliTimestamp()});
     return data.result;
 }
 
