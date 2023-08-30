@@ -27,8 +27,13 @@ pub fn build(b: *std.Build) !void {
     });
     bench.addModule("libcoro", coro);
     bench.linkLibC();
+    const bench_run = b.addRunArtifact(bench);
+    if (b.args) |args| {
+        bench_run.addArgs(args);
+    }
     const bench_step = b.step("benchmark", "Run benchmark");
-    bench_step.dependOn(&b.addRunArtifact(bench).step);
+    bench_step.dependOn(&bench_run.step);
+    bench_step.dependOn(&b.addInstallArtifact(bench, .{}).step);
 
     // Test step
     const test_step = b.step("test", "Run tests");

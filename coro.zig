@@ -62,9 +62,15 @@ pub fn xcoroAlloc(
 
 // Resume the passed coroutine, suspending the current coroutine.
 // coro: CoroT
-pub fn xresume(coro: anytype) @TypeOf(coro).ResumeT {
+pub fn xresume(coro: anytype) getResumeT(@TypeOf(coro)) {
     thread_state.switchIn(getcoro(coro));
+    if (@TypeOf(coro) == *Coro) return;
     return coro.getError();
+}
+
+fn getResumeT(comptime T: type) type {
+    if (T == *Coro) return void;
+    return T.ResumeT;
 }
 
 // Await the result of the passed coroutine, suspending the current coroutine.
