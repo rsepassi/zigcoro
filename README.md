@@ -162,7 +162,9 @@ test "nested" {
 
 ## Performance
 
-The benchmark measures the cost of a context switch from one coroutine to
+## Context switching
+
+This benchmark measures the cost of a context switch from one coroutine to
 another by bouncing back and forth between 2 coroutines millions of times.
 
 From a run on an AMD Ryzen Threadripper PRO 5995WX:
@@ -170,7 +172,8 @@ From a run on an AMD Ryzen Threadripper PRO 5995WX:
 ```
 > zig env | grep target
  "target": "x86_64-linux.5.19...5.19-gnu.2.19"
-> zig build benchmark
+
+> zig build benchmark -- --context_switch
 ns/ctxswitch: 7
 ```
 
@@ -179,8 +182,50 @@ From a run on an M1 Mac Mini:
 ```
 > zig env | grep target
  "target": "aarch64-macos.13.5...13.5-none"
-> zig build benchmark
+
+> zig build benchmark -- --context_switch
 ns/ctxswitch: 17
+```
+
+## Coroutine count
+
+This benchmark spawns a number of coroutines and iterates through them bouncing
+control back and forth, periodically logging the cost of context switching. As
+you increase the number of coroutines, you'll notice a cliff in performance.
+This will be highly dependent on the amount of free memory on the system.
+
+From a run on an AMD Ryzen Threadripper PRO 5995WX:
+
+```
+> zig env | grep target
+ "target": "x86_64-linux.5.19...5.19-gnu.2.19"
+
+# TODO
+```
+
+From a run on an M1 Mac Mini:
+```
+> zig env | grep target
+ "target": "aarch64-macos.13.5...13.5-none"
+
+> system_profiler SPHardwareDataType | grep Memory
+  Memory: 8 GB
+
+> zig build benchmark -- --ncoros 800_000
+Running benchmark ncoros
+Running 800000 coroutines for 1000 rounds
+ns/ctxswitch: 26
+ns/ctxswitch: 26
+ns/ctxswitch: 26
+...
+
+> zig build benchmark -- --ncoros 900_000
+Running benchmark ncoros
+Running 900000 coroutines for 1000 rounds
+ns/ctxswitch: 233
+ns/ctxswitch: 234
+ns/ctxswitch: 237
+...
 ```
 
 Each coroutine uses, at minimum, 1 page of memory, typically 4KB on `x86_64`
