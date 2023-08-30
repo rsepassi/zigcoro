@@ -80,8 +80,10 @@ fn getResumeT(comptime T: type) type {
 // Await the result of the passed coroutine, suspending the current coroutine.
 // coro: CoroT
 pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
-    thread_state.switchIn(coro.coro);
-    // return coro.getStorage().popAwait();
+    while (!coro.status().complete()) {
+        thread_state.switchIn(coro.coro);
+    }
+    return coro.getStorage().popAwait();
 }
 
 // Await the next yield of the passed coroutine, suspending the current coroutine.
