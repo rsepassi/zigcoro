@@ -162,6 +162,10 @@ test "nested" {
 
 ## Performance
 
+I've done some simple benchmarking on the cost of context switching and on
+pushing the number of coroutines. Further investigations on performance would
+be most welcome, as well as more realistic benchmarks.
+
 ## Context switching
 
 This benchmark measures the cost of a context switch from one coroutine to
