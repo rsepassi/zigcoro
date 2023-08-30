@@ -11,11 +11,11 @@ const Env = struct {
 };
 var env: Env = undefined;
 
-fn sleepFor(ms: u64) xev.Timer.RunError!void {
-    std.debug.print("sleepFor\n", .{});
+fn sleep(ms: u64) xev.Timer.RunError!void {
+    std.debug.print("sleep\n", .{});
 
     var data: struct {
-        err: ?xev.Timer.RunError = null,
+        result: xev.Timer.RunError!void = {},
         coro: *libcoro.Coro = undefined,
 
         fn callback(
@@ -24,13 +24,10 @@ fn sleepFor(ms: u64) xev.Timer.RunError!void {
             c_inner: *xev.Completion,
             result: xev.Timer.RunError!void,
         ) xev.CallbackAction {
-            std.debug.print("in callback\n", .{});
             _ = c_inner;
             _ = loop;
             const data: *@This() = @ptrCast(@alignCast(userdata.?));
-            if (result) |_| {} else |err| {
-                data.err = err;
-            }
+            data.result = result;
             libcoro.xresume(data.coro);
             return .disarm;
         }
@@ -41,10 +38,10 @@ fn sleepFor(ms: u64) xev.Timer.RunError!void {
     var c: xev.Completion = .{};
     w.run(env.loop, &c, ms, @TypeOf(data), &data, &@TypeOf(data).callback);
 
-    std.debug.print("sleepFor suspend {d}\n", .{std.time.timestamp()});
+    std.debug.print("sleep suspend {d}\n", .{std.time.timestamp()});
     libcoro.xsuspend();
-    std.debug.print("sleepFor done    {d}\n", .{std.time.timestamp()});
-    if (data.err) |err| return err;
+    std.debug.print("sleep done    {d}\n", .{std.time.timestamp()});
+    return data.result;
 }
 
 pub fn main() !void {
@@ -61,19 +58,26 @@ pub fn main() !void {
         .allocator = allocator,
     };
 
-    const main_coro = try libcoro.xcoroAlloc(coroMain, .{}, env.allocator, null, .{});
+    const main_coro = try libcoro.xcoroAlloc(coroMain, .{1000}, env.allocator, null, .{});
     defer main_coro.deinit();
     try libcoro.xresume(main_coro);
+
+    const main_coro2 = try libcoro.xcoroAlloc(coroMain, .{500}, env.allocator, null, .{});
+    defer main_coro2.deinit();
+    try libcoro.xresume(main_coro2);
 
     std.debug.print("mainmain loop run\n", .{});
     try loop.run(.until_done);
     std.debug.print("mainmain done\n", .{});
 }
 
-fn coroMain() !void {
+fn coroMain(tick: usize) !void {
     std.debug.print("coroMain\n", .{});
 
-    try sleepFor(1000);
+    for (0..10) |i| {
+        try sleep(tick);
+        std.debug.print("coroMain tick {d}\n", .{i});
+    }
 
     std.debug.print("coroMain done\n", .{});
 }
