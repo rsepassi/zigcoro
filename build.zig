@@ -38,4 +38,17 @@ pub fn build(b: *std.Build) !void {
     // Test step
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&b.addRunArtifact(coro_test).step);
+
+    // Async IO
+    const aio = b.addExecutable(.{
+        .name = "aio",
+        .root_source_file = .{ .path = "asyncio.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    aio.addModule("libcoro", coro);
+    aio.addModule("xev", b.dependency("libxev", .{}).module("xev"));
+    aio.linkLibC();
+    const aio_step = b.step("aio", "Run aio");
+    aio_step.dependOn(&b.addRunArtifact(aio).step);
 }

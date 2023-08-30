@@ -1,0 +1,10 @@
+.{
+    .name = "zigcoro",
+    .version = "0.0.0",
+    .dependencies = .{
+        .libxev = .{
+            .url = "https://api.github.com/repos/mitchellh/libxev/tarball/f06915",
+            .hash = "1220622831138efa0105981c34677a254894d33748cc0b2ff9694972ae3ec6408ce1",
+        },
+    },
+}
