@@ -3,6 +3,10 @@ const xev = @import("xev");
 const libcoro = @import("libcoro");
 
 // Todos
+// * Watchers
+//   * Async
+//   * Process
+//   * UDP
 // * CoroPool to reuse stack memory
 // * Groups of coroutines: waitAll, asCompleted
 // * Timeouts, cancellations
@@ -15,14 +19,13 @@ var env: Env = undefined;
 
 fn Stream(comptime T: type, comptime StreamT: type, comptime options: xev.stream.Options) type {
     return struct {
-        pub usingnamespace if (options.close) Closeable(T, StreamT, options) else struct {};
-        pub usingnamespace if (options.read != .none) Readable(T, StreamT, options) else struct {};
-        pub usingnamespace if (options.write != .none) Writeable(T, StreamT, options) else struct {};
+        pub usingnamespace if (options.close) Closeable(T, StreamT) else struct {};
+        pub usingnamespace if (options.read != .none) Readable(T, StreamT) else struct {};
+        pub usingnamespace if (options.write != .none) Writeable(T, StreamT) else struct {};
     };
 }
 
-fn Closeable(comptime T: type, comptime StreamT: type, comptime options: xev.stream.Options) type {
-    _ = options;
+fn Closeable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const CloseResult = xev.CloseError!void;
@@ -61,8 +64,7 @@ fn Closeable(comptime T: type, comptime StreamT: type, comptime options: xev.str
     };
 }
 
-fn Readable(comptime T: type, comptime StreamT: type, comptime options: xev.stream.Options) type {
-    _ = options;
+fn Readable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const ReadResult = xev.ReadError!usize;
@@ -103,8 +105,7 @@ fn Readable(comptime T: type, comptime StreamT: type, comptime options: xev.stre
     };
 }
 
-fn Writeable(comptime T: type, comptime StreamT: type, comptime options: xev.stream.Options) type {
-    _ = options;
+fn Writeable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const WriteResult = xev.WriteError!usize;
@@ -145,6 +146,98 @@ fn Writeable(comptime T: type, comptime StreamT: type, comptime options: xev.str
     };
 }
 
+const File = struct {
+    const Self = @This();
+
+    file: xev.File,
+
+    usingnamespace Stream(Self, xev.File, .{
+        .close = true,
+        .read = .read,
+        .write = .write,
+        .threadpool = true,
+    });
+
+    fn init(file: xev.File) Self {
+        return .{ .file = file };
+    }
+
+    fn stream(self: Self) xev.File {
+        return self.file;
+    }
+
+    const PReadResult = xev.ReadError!usize;
+    fn pread(self: Self, buf: xev.ReadBuffer, offset: u64) PReadResult {
+        const ResultT = PReadResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                s: xev.File,
+                b: xev.ReadBuffer,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                _ = s;
+                _ = b;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+
+        var c: xev.Completion = .{};
+        self.file.pread(env.loop, &c, buf, offset, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+    const PWriteResult = xev.WriteError!usize;
+    fn pwrite(self: Self, buf: xev.WriteBuffer, offset: u64) PWriteResult {
+        const ResultT = PWriteResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                s: xev.File,
+                b: xev.WriteBuffer,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                _ = s;
+                _ = b;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+
+        var c: xev.Completion = .{};
+        self.file.pwrite(env.loop, &c, buf, offset, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+};
+
 const TCP = struct {
     const Self = @This();
 
@@ -162,27 +255,6 @@ const TCP = struct {
 
     fn stream(self: Self) xev.TCP {
         return self.tcp;
-    }
-
-    fn ResultData(comptime ResultT: type) type {
-        return struct {
-            result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
-
-            fn callback(
-                userdata: ?*@This(),
-                l: *xev.Loop,
-                c: *xev.Completion,
-                result: ResultT,
-            ) xev.CallbackAction {
-                _ = l;
-                _ = c;
-                const data = userdata.?;
-                data.result = result;
-                libcoro.xresume(data.coro);
-                return .disarm;
-            }
-        };
     }
 
     fn accept(self: Self) xev.TCP.AcceptError!Self {
@@ -326,13 +398,18 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var loop = try xev.Loop.init(.{});
+    var tpool = xev.ThreadPool.init(.{});
+    defer tpool.deinit();
+    defer tpool.shutdown();
+    var loop = try xev.Loop.init(.{ .thread_pool = &tpool });
     defer loop.deinit();
 
     env = .{
         .loop = &loop,
         .allocator = allocator,
     };
+
+    const stack_size = 1024 * 1024; // 1MiB stacks
 
     // 2 parallel timer loops, one fast, one slow
     const main_coro = try libcoro.xcoroAlloc(tickLoop, .{ 500, "slow" }, env.allocator, null, .{});
@@ -344,13 +421,17 @@ pub fn main() !void {
     try libcoro.xresume(main_coro2);
 
     var info: ServerInfo = .{};
-    const main_coro3 = try libcoro.xcoroAlloc(tcpServer, .{&info}, env.allocator, 1024 * 32, .{});
+    const main_coro3 = try libcoro.xcoroAlloc(tcpServer, .{&info}, env.allocator, stack_size, .{});
     defer main_coro3.deinit();
     try libcoro.xresume(main_coro3);
 
-    const main_coro4 = try libcoro.xcoroAlloc(tcpClient, .{&info}, env.allocator, 1024 * 32, .{});
+    const main_coro4 = try libcoro.xcoroAlloc(tcpClient, .{&info}, env.allocator, stack_size, .{});
     defer main_coro4.deinit();
     try libcoro.xresume(main_coro4);
+
+    const main_coro5 = try libcoro.xcoroAlloc(fileRW, .{}, env.allocator, stack_size, .{});
+    defer main_coro5.deinit();
+    try libcoro.xresume(main_coro5);
 
     std.debug.print("main loop run\n", .{});
     try loop.run(.until_done);
@@ -374,20 +455,20 @@ const ServerInfo = struct {
 
 fn tcpServer(info: *ServerInfo) !void {
     var address = try std.net.Address.parseIp4("127.0.0.1", 0);
-    const server = try xev.TCP.init(address);
+    const xserver = try xev.TCP.init(address);
 
-    try server.bind(address);
-    try server.listen(1);
+    try xserver.bind(address);
+    try xserver.listen(1);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(server.fd, &address.any, &sock_len);
+    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
     std.debug.print("tcp listen {any}\n", .{address});
 
-    const cserver = TCP.init(server);
-    const conn = try cserver.accept();
+    const server = TCP.init(xserver);
+    const conn = try server.accept();
     defer conn.close() catch unreachable;
-    try cserver.close();
+    try server.close();
 
     var recv_buf: [128]u8 = undefined;
     const recv_len = try conn.read(.{ .slice = &recv_buf });
@@ -399,11 +480,37 @@ fn tcpServer(info: *ServerInfo) !void {
 fn tcpClient(info: *ServerInfo) !void {
     const address = info.addr;
     std.debug.print("tcp connect {any}\n", .{address});
-    const client = try xev.TCP.init(address);
-    const cclient = TCP.init(client);
-    defer cclient.close() catch unreachable;
-    _ = try cclient.connect(address);
+    const xclient = try xev.TCP.init(address);
+    const client = TCP.init(xclient);
+    defer client.close() catch unreachable;
+    _ = try client.connect(address);
     var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
-    const send_len = try cclient.write(.{ .slice = &send_buf });
+    const send_len = try client.write(.{ .slice = &send_buf });
     std.debug.print("tcp bytes send {d}\n", .{send_len});
+}
+
+fn fileRW() !void {
+    const path = "test_watcher_file";
+    const f = try std.fs.cwd().createFile(path, .{
+        .read = true,
+        .truncate = true,
+    });
+    defer f.close();
+    defer std.fs.cwd().deleteFile(path) catch {};
+    const xfile = try xev.File.init(f);
+    const file = File.init(xfile);
+    var write_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
+    const write_len = try file.write(.{ .slice = &write_buf });
+    std.debug.print("fileRW wrote {d} bytes\n", .{write_len});
+    std.debug.assert(write_len == write_buf.len);
+    try f.sync();
+    const f2 = try std.fs.cwd().openFile(path, .{});
+    defer f2.close();
+    const xfile2 = try xev.File.init(f2);
+    const file2 = File.init(xfile2);
+    var read_buf: [128]u8 = undefined;
+    const read_len = try file2.read(.{ .slice = &read_buf });
+    std.debug.print("fileRW read {d} bytes\n", .{read_len});
+    std.debug.assert(write_len == read_len);
+    std.debug.assert(std.mem.eql(u8, &write_buf, read_buf[0..read_len]));
 }
