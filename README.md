@@ -46,7 +46,9 @@ Suspend:
   xyield: suspend the running coroutine and yield a value
 Destory: coro.deinit()
 Status: coro.status()
-Type-wrap: CoroT(ReturnType, YieldType).wrap(coro)
+Type-wrap:
+  CoroFor(func, YieldType).wrap(coro)
+  CoroT(ReturnType, YieldType).wrap(coro)
 ```
 
 ## Depend

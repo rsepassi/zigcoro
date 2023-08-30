@@ -20,11 +20,11 @@ pub const StackT = []align(base.stack_align) u8;
 pub const stack_align = base.stack_align;
 pub const default_stack_size = 1024 * 4;
 
-pub const AsyncOptions = struct {
+pub const CoroOptions = struct {
     YieldT: ?type = null,
 };
 
-pub const AsyncStatus = enum {
+pub const CoroStatus = enum {
     Suspended,
     Active,
     Done,
@@ -40,7 +40,7 @@ pub fn xcoro(
     func: anytype,
     args: anytype,
     stack: StackT,
-    comptime options: AsyncOptions,
+    comptime options: CoroOptions,
 ) !CoroFromFn(@TypeOf(func), options) {
     return try CoroFromFn(@TypeOf(func), options).init(func, args, stack);
 }
@@ -52,12 +52,16 @@ pub fn xcoroAlloc(
     args: anytype,
     allocator: std.mem.Allocator,
     stack_size: ?usize,
-    comptime options: AsyncOptions,
+    comptime options: CoroOptions,
 ) !CoroFromFn(@TypeOf(func), options) {
     var stack = try allocator.alignedAlloc(u8, base.stack_align, stack_size orelse default_stack_size);
     const out = try xcoro(func, args, stack, options);
     out.coro.allocator = allocator;
     return out;
+}
+
+pub fn xcurrent() *Coro {
+    return thread_state.current_coro.?;
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
@@ -114,7 +118,7 @@ pub const Coro = struct {
     stack: StackT,
     impl: base.Coro,
     parent: *Coro = undefined,
-    statusval: AsyncStatus = .Suspended,
+    statusval: CoroStatus = .Suspended,
     allocator: ?std.mem.Allocator = null,
     id: CoroInvocationId,
     yieldfn: *const fn (*Coro, *const anyopaque) void,
@@ -125,19 +129,24 @@ pub const Coro = struct {
         func: anytype,
         args: anytype,
         stack: StackT,
-        comptime options: AsyncOptions,
+        comptime options: CoroOptions,
     ) !CoroFromFn(@TypeOf(func), options) {
         return try CoroFromFn(@TypeOf(func), options).init(func, args, stack);
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: Self) void {
         if (self.allocator) |a| a.free(self.stack);
     }
 
-    pub fn status(self: Self) AsyncStatus {
+    pub fn status(self: Self) CoroStatus {
         return self.statusval;
     }
 };
+
+// Use CoroFor(func, T).wrap(coro) to get a typed coroutine from an untyped one
+pub fn CoroFor(comptime func: anytype, comptime YieldT: ?type) type {
+    return CoroFromFn(@TypeOf(func), .{ .YieldT = YieldT });
+}
 
 // Use CoroT(A, B).wrap(coro) to get a typed coroutine from an untyped one
 pub fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
@@ -248,7 +257,7 @@ fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
             if (self.storage == null) return null;
             switch (self.storage.?) {
                 .ret => |val| {
-                    if (val) {
+                    if (val) |_| {
                         return null;
                     } else |err| {
                         return err;
@@ -380,11 +389,11 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
             return .{ .coro = &state.state0.coro };
         }
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: Self) void {
             self.coro.deinit();
         }
 
-        pub fn status(self: Self) AsyncStatus {
+        pub fn status(self: Self) CoroStatus {
             return self.coro.statusval;
         }
 
@@ -445,7 +454,7 @@ fn check_stack_overflow(coro: *Coro) !void {
     }
 }
 
-fn CoroFromFn(comptime Fn: type, comptime options: AsyncOptions) type {
+fn CoroFromFn(comptime Fn: type, comptime options: CoroOptions) type {
     const RetT = @typeInfo(Fn).Fn.return_type.?;
     return CoroT(RetT, options.YieldT);
 }
