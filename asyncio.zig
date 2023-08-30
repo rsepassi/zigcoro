@@ -5,7 +5,6 @@ const libcoro = @import("libcoro");
 // Todos
 // * Watchers
 //   * Async
-//   * Process
 //   * UDP
 // * CoroPool to reuse stack memory
 // * Groups of coroutines: waitAll, asCompleted
@@ -16,6 +15,45 @@ const Env = struct {
     allocator: std.mem.Allocator,
 };
 var env: Env = undefined;
+
+const Process = struct {
+    const Self = @This();
+
+    p: xev.Process,
+
+    fn init(p: xev.Process) Self {
+        return .{ .p = p };
+    }
+    const WaitResult = xev.Process.WaitError!u32;
+    fn wait(self: Self) WaitResult {
+        const ResultT = WaitResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+        var c: xev.Completion = .{};
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+        self.p.wait(env.loop, &c, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+};
 
 fn Stream(comptime T: type, comptime StreamT: type, comptime options: xev.stream.Options) type {
     return struct {
@@ -433,6 +471,10 @@ pub fn main() !void {
     defer main_coro5.deinit();
     try libcoro.xresume(main_coro5);
 
+    const main_coro6 = try libcoro.xcoroAlloc(processTest, .{}, env.allocator, stack_size, .{});
+    defer main_coro6.deinit();
+    try libcoro.xresume(main_coro6);
+
     std.debug.print("main loop run\n", .{});
     try loop.run(.until_done);
     std.debug.print("main end\n", .{});
@@ -513,4 +555,19 @@ fn fileRW() !void {
     std.debug.print("fileRW read {d} bytes\n", .{read_len});
     std.debug.assert(write_len == read_len);
     std.debug.assert(std.mem.eql(u8, &write_buf, read_buf[0..read_len]));
+}
+
+fn processTest() !void {
+    const alloc = std.heap.c_allocator;
+    var child = std.ChildProcess.init(&.{ "sh", "-c", "exit 0" }, alloc);
+    std.debug.print("childprocess start\n", .{});
+    try child.spawn();
+
+    var xp = try xev.Process.init(child.id);
+    defer xp.deinit();
+
+    const p = Process.init(xp);
+    const rc = try p.wait();
+    std.debug.assert(rc == 0);
+    std.debug.print("childprocess done\n", .{});
 }
