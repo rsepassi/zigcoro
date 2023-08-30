@@ -49,6 +49,22 @@ Status: coro.status()
 Type-wrap: CoroT(ReturnType, YieldType).wrap(coro)
 ```
 
+## Depend
+
+`build.zig.zon`
+```zig
+.zigcoro = .{
+  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.1.0",
+  .hash = "12209d5c98d8487e44abfd6248c11e08ac938af1cf120b0318276fc4cf24d0c1626a",
+},
+```
+
+`build.zig`
+```zig
+const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
+my_lib.addModule("libcoro", libcoro);
+```
+
 ## Examples
 
 Explicit resume/suspend (`xresume`, `xsuspend`):
