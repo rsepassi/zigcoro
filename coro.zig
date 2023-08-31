@@ -16,7 +16,7 @@ const base = @import("coro_base.zig");
 // Public API
 // ============================================================================
 pub const xev = struct {
-    pub const aio = @import("asyncio.zig");
+    pub const aio = @import("xev.zig");
 };
 pub const Error = @import("errors.zig").Error;
 pub const StackT = []align(base.stack_align) u8;
