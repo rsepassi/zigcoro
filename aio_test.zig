@@ -10,18 +10,20 @@ const AioTest = struct {
 
     fn init() !@This() {
         const allocator = std.testing.allocator;
+
+        // Allocate on heap for pointer stability
         var loop = try allocator.create(xev.Loop);
         var tp = try allocator.create(xev.ThreadPool);
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
 
-        // Global env
+        // Thread-local env
         aio.env = .{
             .loop = loop,
         };
 
         return .{
-            .allocator = std.testing.allocator,
+            .allocator = allocator,
             .loop = loop,
             .tp = tp,
         };
