@@ -275,13 +275,15 @@ test "aio timers" {
     const t = try AioTest.init();
     defer t.deinit();
 
+    const stack_size = 1024 * 32;
+
     // 2 parallel timer loops, one fast, one slow
     var tick_state = TickState{};
-    const t1 = try libcoro.xcoroAlloc(tickLoop, .{ 100, &tick_state }, t.allocator, null, .{});
+    const t1 = try libcoro.xcoroAlloc(tickLoop, .{ 100, &tick_state }, t.allocator, stack_size, .{});
     defer t1.deinit();
     try libcoro.xresume(t1);
 
-    const t2 = try libcoro.xcoroAlloc(tickLoop, .{ 200, &tick_state }, t.allocator, null, .{});
+    const t2 = try libcoro.xcoroAlloc(tickLoop, .{ 200, &tick_state }, t.allocator, stack_size, .{});
     defer t2.deinit();
     try libcoro.xresume(t2);
 
