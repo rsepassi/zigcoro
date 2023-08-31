@@ -3,7 +3,9 @@ const std = @import("std");
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+
     const xev = b.dependency("libxev", .{}).module("xev");
+
     // Module
     const coro = b.addModule("libcoro", .{
         .source_file = .{ .path = "coro.zig" },
@@ -45,19 +47,21 @@ pub fn build(b: *std.Build) !void {
         test_step.dependOn(&b.addRunArtifact(aio_test).step);
     }
 
-    // Benchmark
-    const bench = b.addExecutable(.{
-        .name = "benchmark",
-        .root_source_file = .{ .path = "benchmark.zig" },
-        .optimize = .ReleaseFast,
-    });
-    bench.addModule("libcoro", coro);
-    bench.linkLibC();
-    const bench_run = b.addRunArtifact(bench);
-    if (b.args) |args| {
-        bench_run.addArgs(args);
+    {
+        // Benchmark
+        const bench = b.addExecutable(.{
+            .name = "benchmark",
+            .root_source_file = .{ .path = "benchmark.zig" },
+            .optimize = .ReleaseFast,
+        });
+        bench.addModule("libcoro", coro);
+        bench.linkLibC();
+        const bench_run = b.addRunArtifact(bench);
+        if (b.args) |args| {
+            bench_run.addArgs(args);
+        }
+        const bench_step = b.step("benchmark", "Run benchmark");
+        bench_step.dependOn(&bench_run.step);
+        bench_step.dependOn(&b.addInstallArtifact(bench, .{}).step);
     }
-    const bench_step = b.step("benchmark", "Run benchmark");
-    bench_step.dependOn(&bench_run.step);
-    bench_step.dependOn(&b.addInstallArtifact(bench, .{}).step);
 }
