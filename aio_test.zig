@@ -3,6 +3,8 @@ const libcoro = @import("libcoro");
 const xev = @import("xev");
 const aio = libcoro.xev.aio;
 
+var env: struct { loop: *xev.Loop } = undefined;
+
 const AioTest = struct {
     allocator: std.mem.Allocator,
     loop: *xev.Loop,
@@ -18,7 +20,7 @@ const AioTest = struct {
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
 
         // Thread-local env
-        aio.env = .{
+        env = .{
             .loop = loop,
         };
 
@@ -154,7 +156,7 @@ const TickState = struct {
 fn tickLoop(tick: usize, state: *TickState) !void {
     const amfast = tick == 100;
     for (0..10) |i| {
-        try aio.sleep(tick);
+        try aio.sleep(env.loop, tick);
         if (amfast) {
             state.fast += 1;
         } else {
@@ -181,7 +183,7 @@ fn tcpServer(info: *ServerInfo) !void {
     try std.os.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
-    const server = aio.TCP.init(xserver);
+    const server = aio.TCP.init(env.loop, xserver);
     const conn = try server.accept();
     defer conn.close() catch unreachable;
     try server.close();
@@ -195,7 +197,7 @@ fn tcpServer(info: *ServerInfo) !void {
 fn tcpClient(info: *ServerInfo) !void {
     const address = info.addr;
     const xclient = try xev.TCP.init(address);
-    const client = aio.TCP.init(xclient);
+    const client = aio.TCP.init(env.loop, xclient);
     defer client.close() catch unreachable;
     _ = try client.connect(address);
     var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
@@ -212,7 +214,7 @@ fn fileRW() !void {
     defer f.close();
     defer std.fs.cwd().deleteFile(path) catch {};
     const xfile = try xev.File.init(f);
-    const file = aio.File.init(xfile);
+    const file = aio.File.init(env.loop, xfile);
     var write_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
     const write_len = try file.write(.{ .slice = &write_buf });
     try std.testing.expectEqual(write_len, write_buf.len);
@@ -220,7 +222,7 @@ fn fileRW() !void {
     const f2 = try std.fs.cwd().openFile(path, .{});
     defer f2.close();
     const xfile2 = try xev.File.init(f2);
-    const file2 = aio.File.init(xfile2);
+    const file2 = aio.File.init(env.loop, xfile2);
     var read_buf: [128]u8 = undefined;
     const read_len = try file2.read(.{ .slice = &read_buf });
     try std.testing.expectEqual(write_len, read_len);
@@ -235,7 +237,7 @@ fn processTest() !void {
     var xp = try xev.Process.init(child.id);
     defer xp.deinit();
 
-    const p = aio.Process.init(xp);
+    const p = aio.Process.init(env.loop, xp);
     const rc = try p.wait();
     try std.testing.expectEqual(rc, 0);
 }
@@ -250,7 +252,7 @@ fn udpServer(info: *ServerInfo) !void {
     try std.os.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
-    const server = aio.UDP.init(xserver);
+    const server = aio.UDP.init(env.loop, xserver);
 
     var recv_buf: [128]u8 = undefined;
     const recv_len = try server.read(.{ .slice = &recv_buf });
@@ -262,7 +264,7 @@ fn udpServer(info: *ServerInfo) !void {
 
 fn udpClient(info: *ServerInfo) !void {
     const xclient = try xev.UDP.init(info.addr);
-    const client = aio.UDP.init(xclient);
+    const client = aio.UDP.init(env.loop, xclient);
     var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
     const send_len = try client.write(info.addr, .{ .slice = &send_buf });
     try std.testing.expectEqual(send_len, 7);
@@ -275,20 +277,20 @@ const NotifierState = struct {
 };
 
 fn asyncTest(state: *NotifierState) !void {
-    const notif = aio.Async.init(state.x);
+    const notif = aio.Async.init(env.loop, state.x);
     try notif.wait();
     state.notified = true;
 }
 
 fn asyncNotifier(state: *NotifierState) !void {
     try state.x.notify();
-    try aio.sleep(100);
+    try aio.sleep(env.loop, 100);
     try std.testing.expect(state.notified);
 }
 
 fn sleepTest() !void {
     const before = std.time.milliTimestamp();
-    try aio.sleep(1000);
+    try aio.sleep(env.loop, 1000);
     const after = std.time.milliTimestamp();
     try std.testing.expect(@fabs(@as(f64, @floatFromInt(after - before - 1000))) < 5);
 }

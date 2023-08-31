@@ -3,14 +3,8 @@ const xev = @import("xev");
 const libcoro = @import("coro.zig");
 
 // Todos
-// * Revisit global env
 // * Groups of coroutines: waitAll, asCompleted
 // * Timeouts, cancellations
-
-pub const Env = struct {
-    loop: *xev.Loop,
-};
-pub threadlocal var env: Env = undefined;
 
 fn XCallback(comptime ResultT: type) type {
     return struct {
@@ -40,10 +34,11 @@ fn XCallback(comptime ResultT: type) type {
 pub const Async = struct {
     const Self = @This();
 
+    loop: *xev.Loop,
     xasync: xev.Async,
 
-    pub fn init(xasync: xev.Async) Self {
-        return .{ .xasync = xasync };
+    pub fn init(loop: *xev.Loop, xasync: xev.Async) Self {
+        return .{ .loop = loop, .xasync = xasync };
     }
 
     const WaitResult = xev.Async.WaitError!void;
@@ -52,7 +47,7 @@ pub const Async = struct {
 
         var c: xev.Completion = .{};
         var data = Data.init();
-        self.xasync.wait(env.loop, &c, Data, &data, &Data.callback);
+        self.xasync.wait(self.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -63,6 +58,7 @@ pub const Async = struct {
 pub const UDP = struct {
     const Self = @This();
 
+    loop: *xev.Loop,
     udp: xev.UDP,
 
     pub usingnamespace Stream(Self, xev.UDP, .{
@@ -71,8 +67,8 @@ pub const UDP = struct {
         .write = .none,
     });
 
-    pub fn init(udp: xev.UDP) Self {
-        return .{ .udp = udp };
+    pub fn init(loop: *xev.Loop, udp: xev.UDP) Self {
+        return .{ .loop = loop, .udp = udp };
     }
 
     pub fn stream(self: Self) xev.UDP {
@@ -112,7 +108,7 @@ pub const UDP = struct {
         var s: xev.UDP.State = undefined;
         var c: xev.Completion = .{};
         var data: Data = .{ .coro = libcoro.xcurrent() };
-        self.udp.read(env.loop, &c, &s, buf, Data, &data, &Data.callback);
+        self.udp.read(self.loop, &c, &s, buf, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -150,7 +146,7 @@ pub const UDP = struct {
         var s: xev.UDP.State = undefined;
         var c: xev.Completion = .{};
         var data: Data = .{ .coro = libcoro.xcurrent() };
-        self.udp.write(env.loop, &c, &s, addr, buf, Data, &data, &Data.callback);
+        self.udp.write(self.loop, &c, &s, addr, buf, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -161,10 +157,11 @@ pub const UDP = struct {
 pub const Process = struct {
     const Self = @This();
 
+    loop: *xev.Loop,
     p: xev.Process,
 
-    pub fn init(p: xev.Process) Self {
-        return .{ .p = p };
+    pub fn init(loop: *xev.Loop, p: xev.Process) Self {
+        return .{ .loop = loop, .p = p };
     }
 
     const WaitResult = xev.Process.WaitError!u32;
@@ -172,7 +169,7 @@ pub const Process = struct {
         const Data = XCallback(WaitResult);
         var c: xev.Completion = .{};
         var data = Data.init();
-        self.p.wait(env.loop, &c, Data, &data, &Data.callback);
+        self.p.wait(self.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -218,7 +215,7 @@ fn Closeable(comptime T: type, comptime StreamT: type) type {
             var data: Data = .{ .coro = libcoro.xcurrent() };
 
             var c: xev.Completion = .{};
-            self.stream().close(env.loop, &c, Data, &data, &Data.callback);
+            self.stream().close(self.loop, &c, Data, &data, &Data.callback);
 
             libcoro.xsuspend();
 
@@ -259,7 +256,7 @@ fn Readable(comptime T: type, comptime StreamT: type) type {
             var data: Data = .{ .coro = libcoro.xcurrent() };
 
             var c: xev.Completion = .{};
-            self.stream().read(env.loop, &c, buf, Data, &data, &Data.callback);
+            self.stream().read(self.loop, &c, buf, Data, &data, &Data.callback);
 
             libcoro.xsuspend();
 
@@ -300,7 +297,7 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
             var data: Data = .{ .coro = libcoro.xcurrent() };
 
             var c: xev.Completion = .{};
-            self.stream().write(env.loop, &c, buf, Data, &data, &Data.callback);
+            self.stream().write(self.loop, &c, buf, Data, &data, &Data.callback);
 
             libcoro.xsuspend();
 
@@ -312,6 +309,7 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
 pub const File = struct {
     const Self = @This();
 
+    loop: *xev.Loop,
     file: xev.File,
 
     pub usingnamespace Stream(Self, xev.File, .{
@@ -321,8 +319,8 @@ pub const File = struct {
         .threadpool = true,
     });
 
-    pub fn init(file: xev.File) Self {
-        return .{ .file = file };
+    pub fn init(loop: *xev.Loop, file: xev.File) Self {
+        return .{ .loop = loop, .file = file };
     }
 
     fn stream(self: Self) xev.File {
@@ -358,7 +356,7 @@ pub const File = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
 
         var c: xev.Completion = .{};
-        self.file.pread(env.loop, &c, buf, offset, Data, &data, &Data.callback);
+        self.file.pread(self.loop, &c, buf, offset, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -394,7 +392,7 @@ pub const File = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
 
         var c: xev.Completion = .{};
-        self.file.pwrite(env.loop, &c, buf, offset, Data, &data, &Data.callback);
+        self.file.pwrite(self.loop, &c, buf, offset, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -405,6 +403,7 @@ pub const File = struct {
 pub const TCP = struct {
     const Self = @This();
 
+    loop: *xev.Loop,
     tcp: xev.TCP,
 
     pub usingnamespace Stream(Self, xev.TCP, .{
@@ -413,8 +412,8 @@ pub const TCP = struct {
         .write = .send,
     });
 
-    pub fn init(tcp: xev.TCP) Self {
-        return .{ .tcp = tcp };
+    pub fn init(loop: *xev.Loop, tcp: xev.TCP) Self {
+        return .{ .loop = loop, .tcp = tcp };
     }
 
     fn stream(self: Self) xev.TCP {
@@ -427,12 +426,12 @@ pub const TCP = struct {
 
         var data = Data.init();
         var c: xev.Completion = .{};
-        self.tcp.accept(env.loop, &c, Data, &data, &Data.callback);
+        self.tcp.accept(self.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
         if (data.result) |result| {
-            return .{ .tcp = result };
+            return .{ .loop = self.loop, .tcp = result };
         } else |err| return err;
     }
 
@@ -463,7 +462,7 @@ pub const TCP = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
 
         var c: xev.Completion = .{};
-        self.tcp.connect(env.loop, &c, addr, Data, &data, &Data.callback);
+        self.tcp.connect(self.loop, &c, addr, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -497,7 +496,7 @@ pub const TCP = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
 
         var c: xev.Completion = .{};
-        self.tcp.shutdown(env.loop, &c, Data, &data, &Data.callback);
+        self.tcp.shutdown(self.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
 
@@ -506,14 +505,14 @@ pub const TCP = struct {
 };
 
 const SleepResult = xev.Timer.RunError!void;
-pub fn sleep(ms: u64) SleepResult {
+pub fn sleep(loop: *xev.Loop, ms: u64) SleepResult {
     const Data = XCallback(SleepResult);
 
     var data = Data.init();
     const w = try xev.Timer.init();
     defer w.deinit();
     var c: xev.Completion = .{};
-    w.run(env.loop, &c, ms, Data, &data, &Data.callback);
+    w.run(loop, &c, ms, Data, &data, &Data.callback);
 
     libcoro.xsuspend();
 
