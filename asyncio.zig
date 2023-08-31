@@ -13,6 +13,31 @@ const Env = struct {
 };
 var env: Env = undefined;
 
+fn XCallback(comptime ResultT: type) type {
+    return struct {
+        coro: *libcoro.Coro,
+        result: ResultT = undefined,
+
+        fn init() @This() {
+            return .{ .coro = libcoro.xcurrent() };
+        }
+
+        fn callback(
+            userdata: ?*@This(),
+            l: *xev.Loop,
+            c: *xev.Completion,
+            result: ResultT,
+        ) xev.CallbackAction {
+            _ = l;
+            _ = c;
+            const data = userdata.?;
+            data.result = result;
+            libcoro.xresume(data.coro);
+            return .disarm;
+        }
+    };
+}
+
 const Async = struct {
     const Self = @This();
 
@@ -24,28 +49,10 @@ const Async = struct {
 
     const WaitResult = xev.Async.WaitError!void;
     fn wait(self: Self) WaitResult {
-        const ResultT = WaitResult;
-        const Data = struct {
-            result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
-
-            fn callback(
-                userdata: ?*@This(),
-                l: *xev.Loop,
-                c: *xev.Completion,
-                result: ResultT,
-            ) xev.CallbackAction {
-                _ = l;
-                _ = c;
-                const data = userdata.?;
-                data.result = result;
-                libcoro.xresume(data.coro);
-                return .disarm;
-            }
-        };
+        const Data = XCallback(WaitResult);
 
         var c: xev.Completion = .{};
-        var data: Data = .{ .coro = libcoro.xcurrent() };
+        var data = Data.init();
         self.xasync.wait(env.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
@@ -163,27 +170,9 @@ const Process = struct {
 
     const WaitResult = xev.Process.WaitError!u32;
     fn wait(self: Self) WaitResult {
-        const ResultT = WaitResult;
-        const Data = struct {
-            result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
-
-            fn callback(
-                userdata: ?*@This(),
-                l: *xev.Loop,
-                c: *xev.Completion,
-                result: ResultT,
-            ) xev.CallbackAction {
-                _ = l;
-                _ = c;
-                const data = userdata.?;
-                data.result = result;
-                libcoro.xresume(data.coro);
-                return .disarm;
-            }
-        };
+        const Data = XCallback(WaitResult);
         var c: xev.Completion = .{};
-        var data: Data = .{ .coro = libcoro.xcurrent() };
+        var data = Data.init();
         self.p.wait(env.loop, &c, Data, &data, &Data.callback);
 
         libcoro.xsuspend();
@@ -434,28 +423,9 @@ const TCP = struct {
 
     fn accept(self: Self) xev.TCP.AcceptError!Self {
         const AcceptResult = xev.TCP.AcceptError!xev.TCP;
-        const ResultT = AcceptResult;
-        const Data = struct {
-            result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+        const Data = XCallback(AcceptResult);
 
-            fn callback(
-                userdata: ?*@This(),
-                l: *xev.Loop,
-                c: *xev.Completion,
-                result: ResultT,
-            ) xev.CallbackAction {
-                _ = l;
-                _ = c;
-                const data = userdata.?;
-                data.result = result;
-                libcoro.xresume(data.coro);
-                return .disarm;
-            }
-        };
-
-        var data: Data = .{ .coro = libcoro.xcurrent() };
-
+        var data = Data.init();
         var c: xev.Completion = .{};
         self.tcp.accept(env.loop, &c, Data, &data, &Data.callback);
 
@@ -535,28 +505,11 @@ const TCP = struct {
     }
 };
 
-fn sleep(ms: u64) xev.Timer.RunError!void {
-    const Data = struct {
-        result: xev.Timer.RunError!void = {},
-        coro: *libcoro.Coro = undefined,
+const SleepResult = xev.Timer.RunError!void;
+fn sleep(ms: u64) SleepResult {
+    const Data = XCallback(SleepResult);
 
-        fn callback(
-            userdata: ?*@This(),
-            loop: *xev.Loop,
-            c: *xev.Completion,
-            result: xev.Timer.RunError!void,
-        ) xev.CallbackAction {
-            _ = c;
-            _ = loop;
-            const self = userdata.?;
-            self.result = result;
-            libcoro.xresume(self.coro);
-            return .disarm;
-        }
-    };
-
-    var data: Data = .{ .coro = libcoro.xcurrent() };
-
+    var data = Data.init();
     const w = try xev.Timer.init();
     defer w.deinit();
     var c: xev.Completion = .{};
