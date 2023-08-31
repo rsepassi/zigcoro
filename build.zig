@@ -12,20 +12,38 @@ pub fn build(b: *std.Build) !void {
         },
     });
 
-    // Test
-    const coro_test = b.addTest(.{
-        .name = "corotest",
-        .root_source_file = .{ .path = "test.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    coro_test.addModule("libcoro", coro);
-    coro_test.addModule("xev", xev);
-    coro_test.linkLibC();
+    {
+        // Test
+        const coro_test = b.addTest(.{
+            .name = "corotest",
+            .root_source_file = .{ .path = "test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        coro_test.addModule("libcoro", coro);
+        coro_test.addModule("xev", xev);
+        coro_test.linkLibC();
 
-    // Test step
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&b.addRunArtifact(coro_test).step);
+        // Test step
+        const test_step = b.step("test", "Run tests");
+        test_step.dependOn(&b.addRunArtifact(coro_test).step);
+    }
+
+    {
+        const aio_test = b.addTest(.{
+            .name = "aiotest",
+            .root_source_file = .{ .path = "aio_test.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        aio_test.addModule("libcoro", coro);
+        aio_test.addModule("xev", xev);
+        aio_test.linkLibC();
+
+        // Test step
+        const test_step = b.step("test-aio", "Run async io tests");
+        test_step.dependOn(&b.addRunArtifact(aio_test).step);
+    }
 
     // Benchmark
     const bench = b.addExecutable(.{
