@@ -292,7 +292,7 @@ test "aio tcp" {
     const t = try AioTest.init();
     defer t.deinit();
 
-    const stack_size = 1024 * 16;
+    const stack_size = 1024 * 32;
 
     var info: ServerInfo = .{};
     const sco = try libcoro.xcoroAlloc(tcpServer, .{&info}, t.allocator, stack_size, .{});
@@ -320,7 +320,7 @@ test "aio udp" {
     const t = try AioTest.init();
     defer t.deinit();
 
-    const stack_size = 1024 * 16;
+    const stack_size = 1024 * 32;
     var udp_info: ServerInfo = .{};
 
     const sco = try libcoro.xcoroAlloc(udpServer, .{&udp_info}, t.allocator, stack_size, .{});
@@ -338,7 +338,7 @@ test "aio sleep" {
     const t = try AioTest.init();
     defer t.deinit();
 
-    const stack_size = 1024 * 8;
+    const stack_size = 1024 * 32;
 
     const co = try libcoro.xcoroAlloc(sleepTest, .{}, t.allocator, stack_size, .{});
     defer co.deinit();
@@ -351,7 +351,7 @@ test "aio process" {
     const t = try AioTest.init();
     defer t.deinit();
 
-    const stack_size = 1024 * 8;
+    const stack_size = 1024 * 32;
 
     const co = try libcoro.xcoroAlloc(processTest, .{}, t.allocator, stack_size, .{});
     defer co.deinit();
@@ -364,7 +364,7 @@ test "aio async" {
     const t = try AioTest.init();
     defer t.deinit();
 
-    const stack_size = 1024 * 16;
+    const stack_size = 1024 * 32;
     var nstate = NotifierState{ .x = try xev.Async.init() };
 
     const co = try libcoro.xcoroAlloc(asyncTest, .{&nstate}, t.allocator, stack_size, .{});
