@@ -4,7 +4,6 @@ const libcoro = @import("coro.zig");
 
 // Todos
 // * Revisit global env
-// * CoroPool to reuse stack memory
 // * Groups of coroutines: waitAll, asCompleted
 // * Timeouts, cancellations
 
