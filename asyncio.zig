@@ -5,7 +5,6 @@ const libcoro = @import("libcoro");
 // Todos
 // * Watchers
 //   * Async
-//   * UDP
 // * CoroPool to reuse stack memory
 // * Groups of coroutines: waitAll, asCompleted
 // * Timeouts, cancellations
@@ -16,6 +15,104 @@ const Env = struct {
 };
 var env: Env = undefined;
 
+const UDP = struct {
+    const Self = @This();
+
+    udp: xev.UDP,
+
+    usingnamespace Stream(Self, xev.UDP, .{
+        .close = true,
+        .read = .none,
+        .write = .none,
+    });
+
+    fn init(udp: xev.UDP) Self {
+        return .{ .udp = udp };
+    }
+
+    fn stream(self: Self) xev.UDP {
+        return self.udp;
+    }
+
+    const ReadResult = xev.ReadError!usize;
+    fn read(self: Self, buf: xev.ReadBuffer) ReadResult {
+        const ResultT = ReadResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                s: *xev.UDP.State,
+                addr: std.net.Address,
+                udp: xev.UDP,
+                b: xev.ReadBuffer,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                _ = s;
+                _ = addr;
+                _ = udp;
+                _ = b;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+
+        var s: xev.UDP.State = undefined;
+        var c: xev.Completion = .{};
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+        self.udp.read(env.loop, &c, &s, buf, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+
+    const WriteResult = xev.WriteError!usize;
+    fn write(self: Self, addr: std.net.Address, buf: xev.WriteBuffer) WriteResult {
+        const ResultT = WriteResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                s: *xev.UDP.State,
+                udp: xev.UDP,
+                b: xev.WriteBuffer,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                _ = s;
+                _ = udp;
+                _ = b;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+
+        var s: xev.UDP.State = undefined;
+        var c: xev.Completion = .{};
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+        self.udp.write(env.loop, &c, &s, addr, buf, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+};
+
 const Process = struct {
     const Self = @This();
 
@@ -24,6 +121,7 @@ const Process = struct {
     fn init(p: xev.Process) Self {
         return .{ .p = p };
     }
+
     const WaitResult = xev.Process.WaitError!u32;
     fn wait(self: Self) WaitResult {
         const ResultT = WaitResult;
@@ -447,7 +545,7 @@ pub fn main() !void {
         .allocator = allocator,
     };
 
-    const stack_size = 1024 * 1024; // 1MiB stacks
+    const stack_size = 2 * 1024 * 1024; // 2MiB stacks
 
     // 2 parallel timer loops, one fast, one slow
     const main_coro = try libcoro.xcoroAlloc(tickLoop, .{ 500, "slow" }, env.allocator, null, .{});
@@ -474,6 +572,15 @@ pub fn main() !void {
     const main_coro6 = try libcoro.xcoroAlloc(processTest, .{}, env.allocator, stack_size, .{});
     defer main_coro6.deinit();
     try libcoro.xresume(main_coro6);
+
+    var udp_info: ServerInfo = .{};
+    const main_coro7 = try libcoro.xcoroAlloc(udpServer, .{&udp_info}, env.allocator, stack_size, .{});
+    defer main_coro7.deinit();
+    try libcoro.xresume(main_coro7);
+
+    const main_coro8 = try libcoro.xcoroAlloc(udpClient, .{&udp_info}, env.allocator, stack_size, .{});
+    defer main_coro8.deinit();
+    try libcoro.xresume(main_coro8);
 
     std.debug.print("main loop run\n", .{});
     try loop.run(.until_done);
@@ -570,4 +677,36 @@ fn processTest() !void {
     const rc = try p.wait();
     std.debug.assert(rc == 0);
     std.debug.print("childprocess done\n", .{});
+}
+
+fn udpServer(info: *ServerInfo) !void {
+    var address = try std.net.Address.parseIp4("127.0.0.1", 0);
+    const xserver = try xev.UDP.init(address);
+
+    try xserver.bind(address);
+
+    var sock_len = address.getOsSockLen();
+    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    info.addr = address;
+    std.debug.print("udp listen {any}\n", .{address});
+
+    const server = UDP.init(xserver);
+
+    var recv_buf: [128]u8 = undefined;
+    const recv_len = try server.read(.{ .slice = &recv_buf });
+    std.debug.print("udp recv {d} bytes\n", .{recv_len});
+    var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
+    std.debug.assert(recv_len == send_buf.len);
+    std.debug.assert(std.mem.eql(u8, &send_buf, recv_buf[0..recv_len]));
+    try server.close();
+}
+
+fn udpClient(info: *ServerInfo) !void {
+    const xclient = try xev.UDP.init(info.addr);
+    const client = UDP.init(xclient);
+    var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
+    const send_len = try client.write(info.addr, .{ .slice = &send_buf });
+    std.debug.print("udp send {d} bytes\n", .{send_len});
+    std.debug.assert(send_len == 7);
+    try client.close();
 }
