@@ -12,6 +12,8 @@ Async Zig as a library using stackful asymmetric coroutines.
   control will transfer to the caller. Intermediate yields/suspends transfer
   control to the last resuming coroutine.
 
+Async IO is provided by [`libxev`][libxev].
+
 ---
 
 [![test][ci-badge]][ci]
@@ -21,17 +23,16 @@ supports {Linux, Mac} `aarch64`.*
 
 ## Current status
 
-*Updated 2023/08/29*
+*Updated 2023/08/31*
 
 Alpha.
 
 I don't expect the API to change significantly, but as I explore libraries and
 integrations things may shift.
 
-Actively working on [libxev][libxev] integration on a [branch][libxev-branch]
-for async IO.
+Next steps are to further explore cooperative multitasking.
 
-## API
+## Coroutine API
 
 ```
 Create:
@@ -51,6 +52,53 @@ Type-wrap:
   CoroT(ReturnType, YieldType).wrap(coro)
 ```
 
+## Async IO API
+
+`libcoro.xev.aio` provides coroutine-friendly wrappers to all the [high-level
+async APIs in
+`libxev`](https://github.com/mitchellh/libxev/tree/main/src/watcher).
+
+See
+[`aio_test.zig`](https://github.com/rsepassi/zigcoro/blob/main/aio_test.zig)
+for usage examples.
+
+```
+sleep
+TCP
+  accept
+  connect
+  read
+  write
+  close
+  shutdown
+UDP
+  read
+  write
+  close
+Process
+  wait
+File
+  read
+  pread
+  write
+  pwrite
+  close
+Async
+  wait
+```
+
+Stackful asymmetric coroutines provide a clean way of wrapping up async IO
+functionality, providing a programming model akin to threads (where the lightweight
+versions are variously called Coroutines, Green Threads, or Fibers). Calls to
+IO functionality are blocking from the perspective of the coroutine, but many
+coroutines can be running on the same thread.
+
+Under the hood, what's required is async IO functionality, such that a coroutine
+can submit work to be done, suspend, and then be resumed when the work is complete.
+Libraries like [libuv][libuv] and [libxev][libxev] provide cross-platform async IO,
+and this is a new Zig project, so why not depend on another new Zig project like
+libxev?
+
 ## Depend
 
 `build.zig.zon`
@@ -67,7 +115,7 @@ const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
 my_lib.addModule("libcoro", libcoro);
 ```
 
-## Examples
+## Coroutine Examples
 
 Explicit resume/suspend (`xresume`, `xsuspend`):
 
@@ -258,7 +306,6 @@ ns/ctxswitch: 233
 Contributions welcome.
 
 * Libraries
-  * Concurrency primitives and IO (with libuv or libxev)
   * Task library: schedulers, futures, cancellation
   * Recursive data structure iterators
   * Parsers
@@ -287,5 +334,4 @@ Contributions welcome.
 [ci]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml?query=branch%3Amain
 [ci-badge]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml/badge.svg?query=branch%3Amain
 [libxev]: https://github.com/mitchellh/libxev
-[libxev-branch]: https://github.com/rsepassi/zigcoro/pull/5
-
+[libuv]: https://libuv.org
