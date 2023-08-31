@@ -3,8 +3,6 @@ const xev = @import("xev");
 const libcoro = @import("libcoro");
 
 // Todos
-// * Watchers
-//   * Async
 // * CoroPool to reuse stack memory
 // * Groups of coroutines: waitAll, asCompleted
 // * Timeouts, cancellations
@@ -14,6 +12,47 @@ const Env = struct {
     allocator: std.mem.Allocator,
 };
 var env: Env = undefined;
+
+const Async = struct {
+    const Self = @This();
+
+    xasync: xev.Async,
+
+    fn init(xasync: xev.Async) Self {
+        return .{ .xasync = xasync };
+    }
+
+    const WaitResult = xev.Async.WaitError!void;
+    fn wait(self: Self) WaitResult {
+        const ResultT = WaitResult;
+        const Data = struct {
+            result: ResultT = undefined,
+            coro: *libcoro.Coro = undefined,
+
+            fn callback(
+                userdata: ?*@This(),
+                l: *xev.Loop,
+                c: *xev.Completion,
+                result: ResultT,
+            ) xev.CallbackAction {
+                _ = l;
+                _ = c;
+                const data = userdata.?;
+                data.result = result;
+                libcoro.xresume(data.coro);
+                return .disarm;
+            }
+        };
+
+        var c: xev.Completion = .{};
+        var data: Data = .{ .coro = libcoro.xcurrent() };
+        self.xasync.wait(env.loop, &c, Data, &data, &Data.callback);
+
+        libcoro.xsuspend();
+
+        return data.result;
+    }
+};
 
 const UDP = struct {
     const Self = @This();
@@ -582,6 +621,16 @@ pub fn main() !void {
     defer main_coro8.deinit();
     try libcoro.xresume(main_coro8);
 
+    var nstate = NotifierState{ .x = try xev.Async.init() };
+    defer nstate.x.deinit();
+    const main_coro9 = try libcoro.xcoroAlloc(asyncTest, .{&nstate}, env.allocator, stack_size, .{});
+    defer main_coro9.deinit();
+    try libcoro.xresume(main_coro9);
+
+    const main_coro10 = try libcoro.xcoroAlloc(asyncNotifier, .{&nstate}, env.allocator, stack_size, .{});
+    defer main_coro10.deinit();
+    try libcoro.xresume(main_coro10);
+
     std.debug.print("main loop run\n", .{});
     try loop.run(.until_done);
     std.debug.print("main end\n", .{});
@@ -709,4 +758,22 @@ fn udpClient(info: *ServerInfo) !void {
     std.debug.print("udp send {d} bytes\n", .{send_len});
     std.debug.assert(send_len == 7);
     try client.close();
+}
+
+const NotifierState = struct {
+    x: xev.Async,
+    notified: bool = false,
+};
+
+fn asyncTest(state: *NotifierState) !void {
+    const notif = Async.init(state.x);
+    try notif.wait();
+    state.notified = true;
+}
+
+fn asyncNotifier(state: *NotifierState) !void {
+    try state.x.notify();
+    try sleep(100);
+    std.debug.assert(state.notified);
+    std.debug.print("async notified\n", .{});
 }
