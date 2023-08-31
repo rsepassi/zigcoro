@@ -18,7 +18,6 @@ const AioTest = struct {
         // Global env
         aio.env = .{
             .loop = loop,
-            .allocator = allocator,
         };
 
         return .{

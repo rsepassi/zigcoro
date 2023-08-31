@@ -10,7 +10,6 @@ const libcoro = @import("coro.zig");
 
 pub const Env = struct {
     loop: *xev.Loop,
-    allocator: std.mem.Allocator,
 };
 pub threadlocal var env: Env = undefined;
 
