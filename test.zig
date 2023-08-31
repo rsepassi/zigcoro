@@ -311,7 +311,7 @@ test "aio tcp" {
 test "aio file" {
     const t = try AioTest.init();
     defer t.deinit();
-    const stack_size = 1024 * 16;
+    const stack_size = 1024 * 32;
     const co = try libcoro.xcoroAlloc(fileRW, .{}, t.allocator, stack_size, .{});
     defer co.deinit();
     try libcoro.xresume(co);
