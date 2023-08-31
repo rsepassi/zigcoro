@@ -55,8 +55,7 @@ Type-wrap:
 ## Async IO API
 
 `libcoro.xev.aio` provides coroutine-friendly wrappers to all the [high-level
-async APIs in
-`libxev`](https://github.com/mitchellh/libxev/tree/main/src/watcher).
+async APIs][libxev-watchers] in [`libxev`][libxev].
 
 See
 [`aio_test.zig`](https://github.com/rsepassi/zigcoro/blob/main/aio_test.zig)
@@ -104,8 +103,8 @@ libxev?
 `build.zig.zon`
 ```zig
 .zigcoro = .{
-  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.1.0",
-  .hash = "12209d5c98d8487e44abfd6248c11e08ac938af1cf120b0318276fc4cf24d0c1626a",
+  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.2.0",
+  .hash = "1220205d02fad05efdf8802eedb7a5c85971be1bd73d87cecefb64a8887937075013",
 },
 ```
 
@@ -334,4 +333,5 @@ Contributions welcome.
 [ci]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml?query=branch%3Amain
 [ci-badge]: https://github.com/rsepassi/zigcoro/actions/workflows/zig.yml/badge.svg?query=branch%3Amain
 [libxev]: https://github.com/mitchellh/libxev
+[libxev-watchers]: https://github.com/mitchellh/libxev/tree/main/src/watcher
 [libuv]: https://libuv.org
