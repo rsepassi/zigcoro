@@ -293,4 +293,5 @@ fn sleepTest() !void {
     try aio.sleep(env.loop, 1000);
     const after = std.time.milliTimestamp();
     try std.testing.expect(@fabs(@as(f64, @floatFromInt(after - before - 1000))) < 5);
+    try std.testing.expect(libcoro.remainingStackSize() > 1024 * 30);
 }

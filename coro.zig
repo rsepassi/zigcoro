@@ -100,7 +100,7 @@ pub fn xsuspend() void {
 }
 pub fn xsuspendSafe() Error!void {
     if (thread_state.current_coro) |coro| {
-        try check_stack_overflow(coro);
+        try checkStackOverflow(coro);
         thread_state.switchOut(coro.parent);
     } else {
         return Error.SuspendFromMain;
@@ -153,6 +153,21 @@ pub fn CoroFor(comptime func: anytype, comptime YieldT: ?type) type {
 pub fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
     return CoroTInner(RetT, YieldT);
 }
+
+pub noinline fn remainingStackSize() usize {
+    var dummy: usize = 0;
+    dummy += 1;
+    const current = xcurrent();
+    const addr = @intFromPtr(&dummy);
+    const bottom = @intFromPtr(current.stack.ptr);
+    const top = @intFromPtr(current.stack.ptr + current.stack.len);
+    if (addr > bottom) {
+        std.debug.assert(addr < top);
+        return addr - bottom;
+    }
+    return 0;
+}
+
 // ============================================================================
 
 threadlocal var thread_state: ThreadState = .{};
@@ -444,7 +459,7 @@ fn getcoro(coro: anytype) *Coro {
 
 const magic_number: usize = 0x5E574D6D;
 
-fn check_stack_overflow(coro: *Coro) !void {
+fn checkStackOverflow(coro: *Coro) !void {
     const stack = coro.stack.ptr;
     const sp = coro.impl.stack_pointer;
     const magic_number_ptr: *usize = @ptrCast(stack);

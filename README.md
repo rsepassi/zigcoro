@@ -50,6 +50,8 @@ Status: coro.status()
 Type-wrap:
   CoroFor(func, YieldType).wrap(coro)
   CoroT(ReturnType, YieldType).wrap(coro)
+Debug:
+  remainingStackSize: check remaining stack space
 ```
 
 ## Async IO API
