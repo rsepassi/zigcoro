@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) !void {
     {
         const aio_test = b.addTest(.{
             .name = "aiotest",
-            .root_source_file = .{ .path = "aio_test.zig" },
+            .root_source_file = .{ .path = "test_aio.zig" },
             .target = target,
             .optimize = optimize,
         });
