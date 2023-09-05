@@ -15,146 +15,76 @@ const base = @import("coro_base.zig");
 
 // Public API
 // ============================================================================
-pub const xev = struct {
-    pub const aio = @import("xev.zig");
-};
 pub const Error = @import("errors.zig").Error;
 pub const StackT = []align(base.stack_align) u8;
 pub const stack_align = base.stack_align;
 pub const default_stack_size = 1024 * 4;
 
-pub const CoroOptions = struct {
-    YieldT: ?type = null,
-};
-
+// Coroutine status
 pub const CoroStatus = enum {
     Suspended,
     Active,
     Done,
-    Error,
-
-    fn complete(self: @This()) bool {
-        return self == .Error or self == .Done;
-    }
 };
 
-// Create a coroutine, initially suspended.
-pub fn xcoro(
-    func: anytype,
-    args: anytype,
-    stack: StackT,
-    comptime options: CoroOptions,
-) !CoroFromFn(@TypeOf(func), options) {
-    return try CoroFromFn(@TypeOf(func), options).init(func, args, stack);
+// Allocate a stack suitable for coroutine usage.
+// Caller is responsible for freeing memory.
+pub fn stackAlloc(allocator: std.mem.Allocator, size: usize) !StackT {
+    return try allocator.alignedAlloc(u8, stack_align, size);
 }
 
-// Create a coroutine with an allocated stack, initially suspended.
-// Caller is responsible for calling deinit() to free allocated stack.
-pub fn xcoroAlloc(
-    func: anytype,
-    args: anytype,
-    allocator: std.mem.Allocator,
-    stack_size: ?usize,
-    comptime options: CoroOptions,
-) !CoroFromFn(@TypeOf(func), options) {
-    var stack = try allocator.alignedAlloc(u8, base.stack_align, stack_size orelse default_stack_size);
-    errdefer allocator.free(stack);
-    const out = try xcoro(func, args, stack, options);
-    out.coro.allocator = allocator;
-    return out;
-}
-
+// Returns the currently running coroutine
 pub fn xcurrent() *Coro {
     return thread_state.current_coro.?;
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
-// coro: CoroT
-pub fn xresume(coro: anytype) getResumeT(@TypeOf(coro)) {
-    thread_state.switchIn(getcoro(coro));
-    if (@TypeOf(coro) == *Coro) return;
-    return coro.getError();
-}
-
-fn getResumeT(comptime T: type) type {
-    if (T == *Coro) return void;
-    return T.ResumeT;
-}
-
-// Await the result of the passed coroutine, suspending the current coroutine.
-// coro: CoroT
-pub fn xawait(coro: anytype) @TypeOf(coro).AwaitT {
-    if (coro.status() != .Done) thread_state.switchIn(coro.coro);
-    return coro.getStorage().popAwait();
-}
-
-// Await the next yield of the passed coroutine, suspending the current coroutine.
-// coro: CoroT
-pub fn xnext(coro: anytype) @TypeOf(coro).NextT {
-    thread_state.switchIn(coro.coro);
-    return coro.getStorage().popNext();
+// When the resumed coroutine yields, this call will return.
+pub fn xresume(coro: *Coro) void {
+    thread_state.switchIn(coro);
 }
 
 // Suspend the current coroutine, yielding control back to the parent.
+// Returns when the coroutine is resumed.
 pub fn xsuspend() void {
     xsuspendSafe() catch unreachable;
 }
 pub fn xsuspendSafe() Error!void {
-    if (thread_state.current_coro) |coro| {
-        try checkStackOverflow(coro);
-        thread_state.switchOut(coro.parent);
-    } else {
-        return Error.SuspendFromMain;
-    }
-}
-
-// Yield a value from the current coroutine and suspend, yielding control back
-// to the parent.
-pub fn xyield(val: anytype) void {
+    if (thread_state.current_coro == null) return Error.SuspendFromMain;
     const coro = thread_state.current_coro.?;
-    coro.yieldfn(coro, @ptrCast(&val));
-    xsuspend();
+    try checkStackOverflow(coro);
+    thread_state.switchOut(coro.parent);
 }
 
 pub const Coro = struct {
+    // Function to run in the coroutine
+    func: *const fn () void,
+    // Coroutine stack
+    // The top of this memory is typically reserved for some user-defined
+    // storage (e.g. function arguments, return/yield values).
     stack: StackT,
+    // Architecture-specific implementation
     impl: base.Coro,
+    // The coroutine that will be yielded to upon suspend
     parent: *Coro = undefined,
-    statusval: CoroStatus = .Suspended,
-    allocator: ?std.mem.Allocator = null,
+    // Current status, starts suspended
+    status: CoroStatus = .Suspended,
+    // Coro id, {thread, coro id, invocation id}
     id: CoroInvocationId,
-    yieldfn: *const fn (*Coro, *const anyopaque) void,
 
-    const Self = @This();
-
-    fn init(
-        func: anytype,
-        args: anytype,
-        stack: StackT,
-        comptime options: CoroOptions,
-    ) !CoroFromFn(@TypeOf(func), options) {
-        return try CoroFromFn(@TypeOf(func), options).init(func, args, stack);
-    }
-
-    pub fn deinit(self: Self) void {
-        if (self.allocator) |a| a.free(self.stack);
-    }
-
-    pub fn status(self: Self) CoroStatus {
-        return self.statusval;
+    pub fn init(func: *const fn () void, stack: StackT) !@This() {
+        try setMagicNumber(stack);
+        const base_coro = try base.Coro.init(&runcoro, stack);
+        return .{
+            .func = func,
+            .impl = base_coro,
+            .stack = stack,
+            .id = CoroInvocationId.init(),
+        };
     }
 };
 
-// Use CoroFor(func, T).wrap(coro) to get a typed coroutine from an untyped one
-pub fn CoroFor(comptime func: anytype, comptime YieldT: ?type) type {
-    return CoroFromFn(@TypeOf(func), .{ .YieldT = YieldT });
-}
-
-// Use CoroT(A, B).wrap(coro) to get a typed coroutine from an untyped one
-pub fn CoroT(comptime RetT: type, comptime YieldT: ?type) type {
-    return CoroTInner(RetT, YieldT);
-}
-
+// Estimates the remaining stack size in the currently running coroutine
 pub noinline fn remainingStackSize() usize {
     var dummy: usize = 0;
     dummy += 1;
@@ -163,7 +93,7 @@ pub noinline fn remainingStackSize() usize {
     const bottom = @intFromPtr(current.stack.ptr);
     const top = @intFromPtr(current.stack.ptr + current.stack.len);
     if (addr > bottom) {
-        std.debug.assert(addr < top);
+        std.debug.assert(addr < top); // should never have popped beyond the top
         return addr - bottom;
     }
     return 0;
@@ -171,36 +101,36 @@ pub noinline fn remainingStackSize() usize {
 
 // ============================================================================
 
+// Thread-local coroutine runtime
 threadlocal var thread_state: ThreadState = .{};
 const ThreadState = struct {
     root_coro: Coro = .{
+        .func = undefined,
         .stack = undefined,
         .impl = undefined,
-        .parent = undefined,
-        .yieldfn = undefined,
         .id = CoroInvocationId.root(),
     },
     current_coro: ?*Coro = null,
     next_coro_id: usize = 1,
 
-    // Called from resume, next, await
+    // Called from resume
     fn switchIn(self: *@This(), target: *Coro) void {
         self.switchTo(target, true);
     }
 
-    // Called from suspend, yield
+    // Called from suspend
     fn switchOut(self: *@This(), target: *Coro) void {
         self.switchTo(target, false);
     }
 
     fn switchTo(self: *@This(), target: *Coro, set_parent: bool) void {
-        const resumer = self.current();
-        if (!resumer.status().complete()) resumer.statusval = .Suspended;
-        if (set_parent) target.parent = resumer;
-        target.statusval = .Active;
+        const suspender = self.current();
+        if (suspender.status != .Done) suspender.status = .Suspended;
+        if (set_parent) target.parent = suspender;
+        target.status = .Active;
         target.id.incr();
         self.current_coro = target;
-        target.impl.resumeFrom(&resumer.impl);
+        target.impl.resumeFrom(&suspender.impl);
     }
 
     fn nextCoroId(self: *@This()) CoroId {
@@ -217,215 +147,22 @@ const ThreadState = struct {
     }
 };
 
-fn CoroStorage(comptime RetT: type, comptime mYieldT: ?type) type {
-    const can_error = @typeInfo(RetT) == .ErrorUnion;
-    return struct {
-        const YieldT = (mYieldT orelse RetT);
-        const NextT = if (can_error) anyerror!?YieldT else ?YieldT;
-        storage: ?union(enum) {
-            ret: RetT,
-            yield: YieldT,
-        } = null,
+fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
+    _ = from;
+    const target_coro = @fieldParentPtr(Coro, "impl", target);
+    @call(.auto, target_coro.func, .{});
+    target_coro.status = .Done;
+    thread_state.switchOut(target_coro.parent);
 
-        const Self = @This();
-
-        fn setReturn(self: *Self, val: RetT) void {
-            self.storage = .{ .ret = val };
-        }
-
-        fn popAwait(self: *Self) RetT {
-            if (self.storage == null) @panic("xawait called, but coroutine never returned a value");
-            switch (self.storage.?) {
-                .ret => |val| {
-                    self.storage = null;
-                    return val;
-                },
-                else => @panic("xawait called, but coroutine did not return a value. It did yield a value though. Did you mean to call xnext?"),
-            }
-        }
-
-        fn setYield(self: *Self, val: YieldT) void {
-            self.storage = .{ .yield = val };
-        }
-
-        fn popNext(self: *Self) NextT {
-            if (self.storage == null) return null;
-            switch (self.storage.?) {
-                .ret => |val| {
-                    if (can_error) {
-                        if (val) {
-                            return null;
-                        } else |err| {
-                            return err;
-                        }
-                    } else {
-                        return null;
-                    }
-                },
-                .yield => |val| {
-                    self.storage = null;
-                    return val;
-                },
-            }
-        }
-
-        fn getError(self: Self) ?anyerror {
-            if (!can_error) return null;
-            if (self.storage == null) return null;
-            switch (self.storage.?) {
-                .ret => |val| {
-                    if (val) |_| {
-                        return null;
-                    } else |err| {
-                        return err;
-                    }
-                },
-                .yield => {
-                    return null;
-                },
-            }
-        }
-    };
-}
-
-fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
-    const StorageT = CoroStorage(RetT, maybeYieldT);
-    const can_error = @typeInfo(RetT) == .ErrorUnion;
-
-    return struct {
-        const Self = @This();
-
-        const AwaitT = RetT;
-        const ResumeT = if (can_error) anyerror!void else void;
-        const NextT = StorageT.NextT;
-
-        coro: *Coro,
-
-        // Partial state to store in stack
-        // State is split so that the type only depends on StorageT.
-        const State0 = struct {
-            coro: Coro,
-            storage: StorageT = .{},
-        };
-
-        pub fn wrap(coro: *Coro) Self {
-            return .{ .coro = coro };
-        }
-
-        fn init(
-            func: anytype,
-            args: std.meta.ArgsTuple(@TypeOf(func)),
-            stack: StackT,
-        ) !Self {
-            // State to store in stack
-            const State = struct {
-                state0: State0,
-                func: *const @TypeOf(func),
-                args: @TypeOf(args),
-            };
-
-            // Wrapping function to create coroutine
-            const runcoro = (struct {
-                fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
-                    _ = from;
-                    const target_coro = @fieldParentPtr(Coro, "impl", target);
-
-                    // Run the user function.
-                    const target_state = @fieldParentPtr(State, "state0", @fieldParentPtr(State0, "coro", target_coro));
-                    const retval = @call(.auto, target_state.func, target_state.args);
-
-                    // Mark the coroutine done and resume the calling coroutine.
-                    target_state.state0.storage.setReturn(retval);
-
-                    if (@typeInfo(@TypeOf(retval)) == .ErrorUnion) {
-                        if (std.meta.isError(retval)) {
-                            target_coro.statusval = .Error;
-                        } else {
-                            target_coro.statusval = .Done;
-                        }
-                    } else {
-                        target_coro.statusval = .Done;
-                    }
-                    thread_state.switchOut(target_coro.parent);
-
-                    // Never returns
-                    const err_msg = "Cannot resume an already completed coroutine {any}";
-                    @panic(std.fmt.allocPrint(
-                        std.heap.c_allocator,
-                        err_msg,
-                        .{target_coro.id},
-                    ) catch {
-                        @panic(err_msg);
-                    });
-                }
-            }.runcoro);
-
-            const yieldfn = (struct {
-                fn yieldfn(coro: *Coro, ptr: *const anyopaque) void {
-                    const target_state = @fieldParentPtr(State, "state0", @fieldParentPtr(State0, "coro", coro));
-                    const val: *const StorageT.YieldT = @ptrCast(@alignCast(ptr));
-                    target_state.state0.storage.setYield(val.*);
-                }
-            }).yieldfn;
-
-            // Store State at the top of stack
-            var state_ptr = @intFromPtr(stack.ptr + stack.len - @sizeOf(State));
-            state_ptr = std.mem.alignBackward(usize, state_ptr, @alignOf(State));
-            if (state_ptr == 0) return Error.StackTooSmall;
-            var state: *State = @ptrFromInt(state_ptr);
-
-            // Store magic number for stack overflow detection at
-            // the beginning of the stack. If it is ever
-            // overwritten, we'll know that the stack was
-            // overflowed.
-            const magic_number_ptr: *usize = @ptrCast(stack.ptr);
-            magic_number_ptr.* = magic_number;
-
-            // Ensure the remaining stack is well-aligned
-            const new_end_ptr = std.mem.alignBackward(usize, state_ptr, base.stack_align);
-            if (new_end_ptr < @intFromPtr(stack.ptr)) return Error.StackTooSmall;
-            var reduced_stack = stack[0 .. new_end_ptr - @intFromPtr(stack.ptr)];
-
-            if (@intFromPtr(magic_number_ptr) >= new_end_ptr) return Error.StackTooSmall;
-
-            // Create the underlying coroutine
-            const base_coro = try base.Coro.init(&runcoro, reduced_stack);
-            const coro = Coro{
-                .stack = stack,
-                .impl = base_coro,
-                .id = CoroInvocationId.init(),
-                .yieldfn = yieldfn,
-            };
-            state.* = .{
-                .state0 = .{
-                    .coro = coro,
-                },
-                .func = func,
-                .args = args,
-            };
-
-            return .{ .coro = &state.state0.coro };
-        }
-
-        pub fn deinit(self: Self) void {
-            self.coro.deinit();
-        }
-
-        pub fn status(self: Self) CoroStatus {
-            return self.coro.statusval;
-        }
-
-        fn getStorage(self: Self) *StorageT {
-            const state = @fieldParentPtr(State0, "coro", self.coro);
-            return &state.storage;
-        }
-
-        fn getError(self: Self) ResumeT {
-            if (!can_error) return;
-            const err = self.getStorage().getError();
-            if (err) |e| return e;
-        }
-    };
+    // Never returns
+    const err_msg = "Cannot resume an already completed coroutine {any}";
+    @panic(std.fmt.allocPrint(
+        std.heap.c_allocator,
+        err_msg,
+        .{target_coro.id},
+    ) catch {
+        @panic(err_msg);
+    });
 }
 
 const CoroId = struct {
@@ -450,15 +187,6 @@ const CoroInvocationId = struct {
     }
 };
 
-// {*Coro, CoroT} -> Coro
-fn getcoro(coro: anytype) *Coro {
-    if (@TypeOf(coro) == *Coro) {
-        return coro;
-    } else {
-        return coro.coro;
-    }
-}
-
 const magic_number: usize = 0x5E574D6D;
 
 fn checkStackOverflow(coro: *Coro) !void {
@@ -472,7 +200,8 @@ fn checkStackOverflow(coro: *Coro) !void {
     }
 }
 
-fn CoroFromFn(comptime Fn: type, comptime options: CoroOptions) type {
-    const RetT = @typeInfo(Fn).Fn.return_type.?;
-    return CoroT(RetT, options.YieldT);
+fn setMagicNumber(stack: StackT) !void {
+    if (stack.len <= @sizeOf(usize)) return Error.StackTooSmall;
+    const magic_number_ptr: *usize = @ptrCast(stack.ptr);
+    magic_number_ptr.* = magic_number;
 }
