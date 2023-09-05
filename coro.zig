@@ -235,15 +235,21 @@ pub const StackCoro = struct {
 pub noinline fn remainingStackSize() usize {
     var dummy: usize = 0;
     dummy += 1;
-    const current = xcurrent();
     const addr = @intFromPtr(&dummy);
+
+    // Check if the stack was already overflowed
+    const current = xcurrent();
+    if (getMagicNumber(current.stack) != magic_number) return 0;
+
+    // Check if the stack is currently overflowed
     const bottom = @intFromPtr(current.stack.ptr);
+    if (addr < bottom) return 0;
+
+    // Debug check that we're actually in the stack
     const top = @intFromPtr(current.stack.ptr + current.stack.len);
-    if (addr > bottom) {
-        std.debug.assert(addr < top); // should never have popped beyond the top
-        return addr - bottom;
-    }
-    return 0;
+    std.debug.assert(addr < top); // should never have popped beyond the top
+
+    return addr - bottom;
 }
 
 // ============================================================================
@@ -366,4 +372,9 @@ fn setMagicNumber(stack: StackT) !void {
     if (stack.len <= @sizeOf(usize)) return Error.StackTooSmall;
     const magic_number_ptr: *usize = @ptrCast(stack.ptr);
     magic_number_ptr.* = magic_number;
+}
+
+fn getMagicNumber(stack: StackT) usize {
+    const magic_number_ptr: *usize = @ptrCast(stack.ptr);
+    return magic_number_ptr.*;
 }
