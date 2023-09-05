@@ -29,13 +29,18 @@ pub const CoroStatus = enum {
 
 // Allocate a stack suitable for coroutine usage.
 // Caller is responsible for freeing memory.
-pub fn stackAlloc(allocator: std.mem.Allocator, size: usize) !StackT {
-    return try allocator.alignedAlloc(u8, stack_align, size);
+pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
+    return try allocator.alignedAlloc(u8, stack_align, size orelse default_stack_size);
 }
 
 // Returns the currently running coroutine
 pub fn xcurrent() *Coro {
     return thread_state.current_coro.?;
+}
+
+// Returns the storage of the currently running coroutine
+pub fn xcurrentStorage(comptime T: type) *T {
+    return thread_state.current_coro.?.getStorage(T);
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
@@ -60,8 +65,6 @@ pub const Coro = struct {
     // Function to run in the coroutine
     func: *const fn () void,
     // Coroutine stack
-    // The top of this memory is typically reserved for some user-defined
-    // storage (e.g. function arguments, return/yield values).
     stack: StackT,
     // Architecture-specific implementation
     impl: base.Coro,
@@ -71,18 +74,51 @@ pub const Coro = struct {
     status: CoroStatus = .Suspended,
     // Coro id, {thread, coro id, invocation id}
     id: CoroInvocationId,
+    // Caller-specified storage
+    storage: ?*const anyopaque = null,
 
-    pub fn init(func: *const fn () void, stack: StackT) !@This() {
+    pub fn init(func: *const fn () void, stack: StackT, storage: ?*const anyopaque) !@This() {
         try setMagicNumber(stack);
         const base_coro = try base.Coro.init(&runcoro, stack);
         return .{
             .func = func,
             .impl = base_coro,
             .stack = stack,
+            .storage = storage,
             .id = CoroInvocationId.init(),
         };
     }
+
+    pub fn getStorage(self: @This(), comptime T: type) *T {
+        return @ptrCast(@constCast(@alignCast(self.storage)));
+    }
 };
+
+pub fn CoroFrame(comptime Func: type) type {
+    return struct {
+        func: *const Func,
+        args: std.meta.ArgsTuple(Func),
+        retval: @typeInfo(Func).Fn.return_type.? = undefined,
+
+        pub fn init(func: *const Func, args: anytype) @This() {
+            return .{ .func = func, .args = args };
+        }
+
+        // Create a Coro
+        // CoroFrame and stack pointers must remain stable for the lifetime of
+        // the coroutine.
+        pub fn coro(self: *@This(), stack: StackT) !Coro {
+            return try Coro.init(wrapfn, stack, self);
+        }
+
+        fn wrapfn() void {
+            const co = xcurrent();
+            const self: *@This() = @ptrCast(@constCast(@alignCast(co.storage)));
+            const retval = @call(.auto, self.func, self.args);
+            self.retval = retval;
+        }
+    };
+}
 
 // Estimates the remaining stack size in the currently running coroutine
 pub noinline fn remainingStackSize() usize {

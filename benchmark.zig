@@ -26,7 +26,7 @@ fn contextSwitchBm() !void {
         // warmup
         num_bounces = 100_000;
         {
-            var test_coro = try libcoro.Coro.init(testFn, stack);
+            var test_coro = try libcoro.Coro.init(testFn, stack, null);
             for (0..num_bounces) |_| {
                 libcoro.xresume(&test_coro);
             }
@@ -35,7 +35,7 @@ fn contextSwitchBm() !void {
 
         num_bounces = 20_000_000;
         {
-            var test_coro = try libcoro.Coro.init(testFn, stack);
+            var test_coro = try libcoro.Coro.init(testFn, stack, null);
 
             const start = std.time.nanoTimestamp();
             for (0..num_bounces) |_| {
@@ -122,7 +122,7 @@ fn ncorosBm(num_coros: usize) !void {
 
     for (0..num_coros) |i| {
         var stack = try libcoro.stackAlloc(alloc2, null);
-        const coro = try libcoro.Coro.init(suspendRepeat, stack);
+        const coro = try libcoro.Coro.init(suspendRepeat, stack, null);
         coros[i] = coro;
     }
 
