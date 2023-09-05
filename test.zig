@@ -144,7 +144,6 @@ test "generator" {
 }
 
 fn inner() usize {
-    libcoro.xsuspend();
     return 10;
 }
 
