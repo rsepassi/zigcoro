@@ -58,6 +58,7 @@ pub fn xcoroAlloc(
     comptime options: CoroOptions,
 ) !CoroFromFn(@TypeOf(func), options) {
     var stack = try allocator.alignedAlloc(u8, base.stack_align, stack_size orelse default_stack_size);
+    errdefer allocator.free(stack);
     const out = try xcoro(func, args, stack, options);
     out.coro.allocator = allocator;
     return out;
@@ -382,6 +383,7 @@ fn CoroTInner(comptime RetT: type, comptime maybeYieldT: ?type) type {
 
             // Ensure the remaining stack is well-aligned
             const new_end_ptr = std.mem.alignBackward(usize, state_ptr, base.stack_align);
+            if (new_end_ptr < @intFromPtr(stack.ptr)) return Error.StackTooSmall;
             var reduced_stack = stack[0 .. new_end_ptr - @intFromPtr(stack.ptr)];
 
             if (@intFromPtr(magic_number_ptr) >= new_end_ptr) return Error.StackTooSmall;
