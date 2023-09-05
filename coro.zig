@@ -10,7 +10,7 @@ const base = @import("coro_base.zig");
 //   * parent: set in ThreadState.switchTo
 //   * status:
 //     * Active, Suspended: set in ThreadState.switchTo
-//     * Done, Error: set in runcoro
+//     * Done: set in runcoro
 //   * id.invocation: incremented in ThreadState.switchTo
 
 // Public API
@@ -103,14 +103,6 @@ pub const CoroSignature = struct {
     pub fn getReturnT(comptime self: @This()) type {
         return @typeInfo(self.Func).Fn.return_type.?;
     }
-
-    pub fn yieldsVals(comptime self: @This()) bool {
-        return self.YieldT != null;
-    }
-
-    pub fn injectsVals(comptime self: @This()) bool {
-        return self.InjectT != null;
-    }
 };
 
 pub const FrameOptions = struct {
@@ -164,15 +156,6 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             return try Coro.init(wrapfn, stack, self);
         }
 
-        fn wrapfn() void {
-            const self: *@This() = xcurrentStorage(@This());
-            self.values = .{ .retval = @call(
-                .auto,
-                if (is_comptime_func) Sig.func_ptr.?.val else self.func,
-                self.args,
-            ) };
-        }
-
         // Initial resume, takes no injected value, returns yielded value
         pub fn xresumeStart(co: *Coro) Sig.YieldT {
             xresumeTopLevel(co);
@@ -180,7 +163,7 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             return self.values.yieldval;
         }
 
-        // Final resume, returns return value
+        // Final resume, returns coroutine's return value
         pub fn xresumeEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
             const self = co.getStorage(@This());
             self.values = .{ .injectval = val };
@@ -202,6 +185,15 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             self.values = .{ .yieldval = val };
             xsuspend();
             return self.values.injectval;
+        }
+
+        fn wrapfn() void {
+            const self: *@This() = xcurrentStorage(@This());
+            self.values = .{ .retval = @call(
+                .auto,
+                if (is_comptime_func) Sig.func_ptr.?.val else self.func,
+                self.args,
+            ) };
         }
     };
 }
