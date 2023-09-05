@@ -129,6 +129,25 @@ test "coro frame error" {
     try std.testing.expectEqual(storage.retval, error.SomethingBad);
 }
 
+test "stack coro" {
+    const allocator = std.testing.allocator;
+    const stack = try libcoro.stackAlloc(allocator, null);
+    defer allocator.free(stack);
+
+    var x: usize = 0;
+    var coro = try libcoro.StackCoro.init(coroError, .{&x}, stack);
+
+    try std.testing.expectEqual(x, 0);
+    libcoro.xresume(&coro);
+    try std.testing.expectEqual(x, 1);
+    libcoro.xresume(&coro);
+    try std.testing.expectEqual(x, 1);
+    try std.testing.expectEqual(coro.status, .Done);
+
+    const retval = libcoro.StackCoro.storage(coroError, coro).retval;
+    try std.testing.expectEqual(retval, error.SomethingBad);
+}
+
 // TODO:
 // next/yield (resume/suspend with values)
 // args/return (first resume with value, last yield with value)

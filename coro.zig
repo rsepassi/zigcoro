@@ -113,12 +113,28 @@ pub fn CoroFrame(comptime Func: type) type {
 
         fn wrapfn() void {
             const co = xcurrent();
-            const self: *@This() = @ptrCast(@constCast(@alignCast(co.storage)));
+            const self: *@This() = co.getStorage(@This());
             const retval = @call(.auto, self.func, self.args);
             self.retval = retval;
         }
     };
 }
+
+// StackCoro creates a Coro with a CoroFrame stored at the top of the provided
+// stack.
+pub const StackCoro = struct {
+    pub fn init(func: anytype, args: anytype, stack: StackT) !Coro {
+        const FrameT = CoroFrame(@TypeOf(func));
+        const ptr = try stackPush(stack, FrameT.init(func, args));
+        var reduced_stack = stack[0 .. @intFromPtr(ptr) - @intFromPtr(stack.ptr)];
+        var frame: *FrameT = @ptrCast(@alignCast(ptr));
+        return frame.coro(reduced_stack);
+    }
+
+    pub fn storage(func: anytype, coro: Coro) *CoroFrame(@TypeOf(func)) {
+        return @ptrCast(@alignCast(coro.stack.ptr + coro.stack.len));
+    }
+};
 
 // Estimates the remaining stack size in the currently running coroutine
 pub noinline fn remainingStackSize() usize {
@@ -199,6 +215,21 @@ fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
     ) catch {
         @panic(err_msg);
     });
+}
+
+fn stackPush(stack: StackT, val: anytype) ![*]u8 {
+    const T = @TypeOf(val);
+    const ptr_i = std.mem.alignBackward(
+        usize,
+        @intFromPtr(stack.ptr + stack.len - @sizeOf(T)),
+        stack_align,
+    );
+    if (ptr_i <= @intFromPtr(stack.ptr)) {
+        return Error.StackTooSmall;
+    }
+    const ptr: *T = @ptrFromInt(ptr_i);
+    ptr.* = val;
+    return @ptrFromInt(ptr_i);
 }
 
 const CoroId = struct {
