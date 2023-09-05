@@ -94,44 +94,139 @@ pub const Coro = struct {
     }
 };
 
-pub fn CoroFrame(comptime Func: type) type {
-    return struct {
-        func: *const Func,
-        args: std.meta.ArgsTuple(Func),
-        retval: @typeInfo(Func).Fn.return_type.? = undefined,
+pub const CoroSignature = struct {
+    Func: type,
+    YieldT: type = void,
+    InjectT: type = void,
+    func_ptr: ?type = null,
 
-        pub fn init(func: *const Func, args: anytype) @This() {
+    pub fn getReturnT(comptime self: @This()) type {
+        return @typeInfo(self.Func).Fn.return_type.?;
+    }
+
+    pub fn yieldsVals(comptime self: @This()) bool {
+        return self.YieldT != null;
+    }
+
+    pub fn injectsVals(comptime self: @This()) bool {
+        return self.InjectT != null;
+    }
+};
+
+pub const FrameOptions = struct {
+    YieldT: type = void,
+    InjectT: type = void,
+};
+
+pub fn CoroFunc(comptime Func: anytype, comptime options: FrameOptions) type {
+    return CoroFuncSig(.{
+        .Func = if (@TypeOf(Func) == type) Func else @TypeOf(Func),
+        .YieldT = options.YieldT,
+        .InjectT = options.InjectT,
+        .func_ptr = if (@TypeOf(Func) == type) null else struct {
+            const val = Func;
+        },
+    });
+}
+
+const xresumeTopLevel = xresume;
+
+pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
+    const is_comptime_func = Sig.func_ptr != null;
+    return struct {
+        pub const Signature = Sig;
+        func: if (is_comptime_func) void else *const Sig.Func,
+        args: std.meta.ArgsTuple(Sig.Func),
+        // Values that are produced during coroutine execution
+        values: union {
+            retval: Sig.getReturnT(),
+            yieldval: Sig.YieldT,
+            injectval: Sig.InjectT,
+        } = undefined,
+
+        // Initialize frame with args
+        // Function pointer be comptime known
+        pub fn init(args: anytype) @This() {
+            if (!is_comptime_func) {
+                @compileError("init requires function pointer to be comptime known. Use initPtr for runtime-only-known function pointers");
+            }
+            return .{ .func = {}, .args = args };
+        }
+
+        pub fn initPtr(func: *const Sig.Func, args: anytype) @This() {
             return .{ .func = func, .args = args };
         }
 
         // Create a Coro
-        // CoroFrame and stack pointers must remain stable for the lifetime of
+        // CoroFunc and stack pointers must remain stable for the lifetime of
         // the coroutine.
         pub fn coro(self: *@This(), stack: StackT) !Coro {
             return try Coro.init(wrapfn, stack, self);
         }
 
         fn wrapfn() void {
-            const co = xcurrent();
-            const self: *@This() = co.getStorage(@This());
-            const retval = @call(.auto, self.func, self.args);
-            self.retval = retval;
+            const self: *@This() = xcurrentStorage(@This());
+            self.values = .{ .retval = @call(
+                .auto,
+                if (is_comptime_func) Sig.func_ptr.?.val else self.func,
+                self.args,
+            ) };
+        }
+
+        // Initial resume, takes no injected value, returns yielded value
+        pub fn xresumeStart(co: *Coro) Sig.YieldT {
+            xresumeTopLevel(co);
+            const self = co.getStorage(@This());
+            return self.values.yieldval;
+        }
+
+        // Final resume, returns return value
+        pub fn xresumeEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
+            const self = co.getStorage(@This());
+            self.values = .{ .injectval = val };
+            xresumeTopLevel(co);
+            return self.values.retval;
+        }
+
+        // Intermediate resume, takes injected value, returns yielded value
+        pub fn xresume(co: *Coro, val: Sig.InjectT) Sig.YieldT {
+            const self = co.getStorage(@This());
+            self.values = .{ .injectval = val };
+            xresumeTopLevel(co);
+            return self.values.yieldval;
+        }
+
+        // Yields value, returns injected value
+        pub fn xyield(val: Sig.YieldT) Sig.InjectT {
+            const self = xcurrentStorage(@This());
+            self.values = .{ .yieldval = val };
+            xsuspend();
+            return self.values.injectval;
         }
     };
 }
 
-// StackCoro creates a Coro with a CoroFrame stored at the top of the provided
+// StackCoro creates a Coro with a CoroFunc stored at the top of the provided
 // stack.
 pub const StackCoro = struct {
-    pub fn init(func: anytype, args: anytype, stack: StackT) !Coro {
-        const FrameT = CoroFrame(@TypeOf(func));
-        const ptr = try stackPush(stack, FrameT.init(func, args));
+    pub fn init(
+        func: anytype,
+        args: anytype,
+        stack: StackT,
+        comptime options: FrameOptions,
+    ) !Coro {
+        const FrameT = CoroFunc(@TypeOf(func), options);
+        const ptr = try stackPush(stack, FrameT.initPtr(func, args));
         var reduced_stack = stack[0 .. @intFromPtr(ptr) - @intFromPtr(stack.ptr)];
-        var frame: *FrameT = @ptrCast(@alignCast(ptr));
-        return frame.coro(reduced_stack);
+        var f: *FrameT = @ptrCast(@alignCast(ptr));
+        return f.coro(reduced_stack);
     }
 
-    pub fn storage(func: anytype, coro: Coro) *CoroFrame(@TypeOf(func)) {
+    pub fn frame(
+        func: anytype,
+        comptime options: FrameOptions,
+        coro: Coro,
+    ) *CoroFunc(@TypeOf(func), options) {
         return @ptrCast(@alignCast(coro.stack.ptr + coro.stack.len));
     }
 };
