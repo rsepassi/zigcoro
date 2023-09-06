@@ -330,7 +330,21 @@ const CoroId = struct {
     coro: usize,
 };
 
-const CoroInvocationId = struct {
+const CoroInvocationId = if (builtin.mode == .Debug) DebugCoroInvocationId else DummyCoroInvocationId;
+
+const DummyCoroInvocationId = struct {
+    fn init() @This() {
+        return .{};
+    }
+    fn root() @This() {
+        return .{};
+    }
+    fn incr(self: *@This()) void {
+        _ = self;
+    }
+};
+
+const DebugCoroInvocationId = struct {
     id: CoroId,
     invocation: i64 = -1,
 
