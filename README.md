@@ -27,7 +27,8 @@ supports {Linux, Mac} `aarch64`.*
 
 Alpha, WIP.
 
-Further exploring concurrency and cooperative multitasking atop `libxev`.
+Further exploring (structured) concurrency and cooperative multitasking atop
+`libxev` using coroutines.
 
 ## Coroutine API
 
@@ -236,6 +237,14 @@ Contributions welcome.
   * 32-bit
   * WASM
   * comptime?
+
+### TODO
+
+* Revisit CoroFunc state machine:
+  * If a coroutine errors, it will be in the Done state and retval will be set
+    to the error. The caller in that situation will have to test whether the
+    coro is Done to call xreturned instead of xnext. The YieldT should probably
+    be augmented with the error type (if it exists) of the fn return type.
 
 ## Inspirations
 
