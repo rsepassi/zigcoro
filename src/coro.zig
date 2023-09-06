@@ -97,10 +97,17 @@ pub const Coro = struct {
     }
 };
 
+// The signature of a coroutine.
+// Considering a coroutine a generalization of a regular function,
+// it has the typical input arguments and outputs (Func) and also
+// the types of its yielded (YieldT) and injected (InjectT) values.
 pub const CoroSignature = struct {
     Func: type,
     YieldT: type = void,
     InjectT: type = void,
+
+    // If the function this signature represents is compile-time known,
+    // it can be held here.
     func_ptr: ?type = null,
 
     pub fn getReturnT(comptime self: @This()) type {
@@ -123,8 +130,6 @@ pub fn CoroFunc(comptime Func: anytype, comptime options: FrameOptions) type {
         },
     });
 }
-
-const xresumeTopLevel = xresume;
 
 pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
     const is_comptime_func = Sig.func_ptr != null;
@@ -159,26 +164,49 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             return try Coro.init(wrapfn, stack, self);
         }
 
+        // Coroutine functions.
+        //
+        // When considering basic coroutine execution, the coroutine state
+        // machine is:
+        // * Suspended
+        // * Suspended->libcoro.xresume->Active
+        // * Active->libcoro.xsuspend->Suspended
+        // * Active->(fn returns)->Done
+        //
+        // When considering interacting with the storage values (yields/injects
+        // and returns), the coroutine state machine is:
+        // * Created
+        // * Created->xnextStart->Active
+        // * Active->xyield->Suspended
+        // * ActiveFinal->(fn returns)->Done
+        // * Suspended->xnext->Active
+        // * Suspended->xnextEnd->ActiveFinal
+        // * Done->xreturned->Done
+        //
+        // Note that actions in the Active* states are taken from within the
+        // coroutine. All other actions act upon the coroutine from the
+        // outside.
+
         // Initial resume, takes no injected value, returns yielded value
-        pub fn xresumeStart(co: *Coro) Sig.YieldT {
-            xresumeTopLevel(co);
+        pub fn xnextStart(co: *Coro) Sig.YieldT {
+            xresume(co);
             const self = co.getStorage(@This());
             return self.value.yieldval;
         }
 
         // Final resume, takes injected value, returns coroutine's return value
-        pub fn xresumeEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
+        pub fn xnextEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
             const self = co.getStorage(@This());
             self.value = .{ .injectval = val };
-            xresumeTopLevel(co);
+            xresume(co);
             return self.value.retval;
         }
 
         // Intermediate resume, takes injected value, returns yielded value
-        pub fn xresume(co: *Coro, val: Sig.InjectT) Sig.YieldT {
+        pub fn xnext(co: *Coro, val: Sig.InjectT) Sig.YieldT {
             const self = co.getStorage(@This());
             self.value = .{ .injectval = val };
-            xresumeTopLevel(co);
+            xresume(co);
             return self.value.yieldval;
         }
 

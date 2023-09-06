@@ -169,13 +169,13 @@ test "iterator" {
     var frame = Iter.init(.{x});
     var coro = try frame.coro(stack);
     var yielded: usize = undefined;
-    yielded = Iter.xresumeStart(&coro); // first resume takes no value
+    yielded = Iter.xnextStart(&coro); // first resume takes no value
     try std.testing.expectEqual(yielded, 1);
-    yielded = Iter.xresume(&coro, 3);
+    yielded = Iter.xnext(&coro, 3);
     try std.testing.expectEqual(yielded, 4);
-    yielded = Iter.xresume(&coro, 2);
+    yielded = Iter.xnext(&coro, 2);
     try std.testing.expectEqual(yielded, 6);
-    const retval = Iter.xresumeEnd(&coro, 22);
+    const retval = Iter.xnextEnd(&coro, 22);
     try std.testing.expect(retval);
 
     try std.testing.expectEqual(coro.status, .Done);
