@@ -19,6 +19,9 @@ pub const Error = @import("errors.zig").Error;
 pub const StackT = []align(base.stack_align) u8;
 pub const stack_align = base.stack_align;
 pub const default_stack_size = 1024 * 4;
+pub const xev = struct {
+    pub const aio = @import("xev.zig");
+};
 
 // Coroutine status
 pub const CoroStatus = enum {
@@ -128,7 +131,7 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
     return struct {
         pub const Signature = Sig;
         func: if (is_comptime_func) void else *const Sig.Func,
-        args: std.meta.ArgsTuple(Sig.Func),
+        args: ArgsTuple(Sig.Func),
         // Values that are produced during coroutine execution
         values: union {
             retval: Sig.getReturnT(),
@@ -163,7 +166,7 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             return self.values.yieldval;
         }
 
-        // Final resume, returns coroutine's return value
+        // Final resume, takes injected value, returns coroutine's return value
         pub fn xresumeEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
             const self = co.getStorage(@This());
             self.values = .{ .injectval = val };
@@ -187,6 +190,12 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             return self.values.injectval;
         }
 
+        // Returns the value the coroutine returned
+        pub fn xreturned(co: *Coro) Sig.getReturnT() {
+            const self = co.getStorage(@This());
+            return self.values.retval;
+        }
+
         fn wrapfn() void {
             const self: *@This() = xcurrentStorage(@This());
             self.values = .{ .retval = @call(
@@ -196,6 +205,12 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
             ) };
         }
     };
+}
+
+fn ArgsTuple(comptime Fn: type) type {
+    const out = std.meta.ArgsTuple(Fn);
+    if (std.meta.fields(out).len == 0) return @TypeOf(.{});
+    return out;
 }
 
 // StackCoro creates a Coro with a CoroFunc stored at the top of the provided
