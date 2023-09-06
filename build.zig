@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) !void {
 
     // Module
     const coro = b.addModule("libcoro", .{
-        .source_file = .{ .path = "coro.zig" },
+        .source_file = .{ .path = "src/coro.zig" },
         .dependencies = &[_]std.Build.ModuleDependency{
             .{ .name = "xev", .module = xev },
         },
@@ -18,7 +18,7 @@ pub fn build(b: *std.Build) !void {
         // Test
         const coro_test = b.addTest(.{
             .name = "corotest",
-            .root_source_file = .{ .path = "test.zig" },
+            .root_source_file = .{ .path = "src/test.zig" },
             .target = target,
             .optimize = optimize,
         });
@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) !void {
     {
         const aio_test = b.addTest(.{
             .name = "aiotest",
-            .root_source_file = .{ .path = "test_aio.zig" },
+            .root_source_file = .{ .path = "src/test_aio.zig" },
             .target = target,
             .optimize = optimize,
         });
