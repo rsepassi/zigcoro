@@ -1,3 +1,7 @@
+// TODO: update to the new API and reenable tests
+// The underlying functionality works (as demonstrated by the sleep tests) but
+// I'm leaving the other tests alone until the API settles, which should happen
+// once I've settled on what Tasks/Futures look like.
 const std = @import("std");
 const libcoro = @import("libcoro");
 const xev = @import("xev");

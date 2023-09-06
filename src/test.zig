@@ -102,7 +102,7 @@ test "with CoroFunc" {
     libcoro.xresume(&coro);
     try std.testing.expectEqual(x, 4);
     try std.testing.expectEqual(coro.status, .Done);
-    try std.testing.expectEqual(frame.values.retval, 14);
+    try std.testing.expectEqual(frame.value.retval, 14);
     try std.testing.expectEqual(CoroFn.Signature.getReturnT(), usize);
 }
 
@@ -128,7 +128,7 @@ test "coro frame error" {
     libcoro.xresume(&coro);
     try std.testing.expectEqual(x, 1);
     try std.testing.expectEqual(coro.status, .Done);
-    try std.testing.expectEqual(frame.values.retval, error.SomethingBad);
+    try std.testing.expectEqual(frame.value.retval, error.SomethingBad);
 }
 
 test "stack coro" {
@@ -146,7 +146,7 @@ test "stack coro" {
     try std.testing.expectEqual(x, 1);
     try std.testing.expectEqual(coro.status, .Done);
 
-    const retval = libcoro.StackCoro.frame(coroError, .{}, coro).values.retval;
+    const retval = libcoro.StackCoro.frame(coroError, .{}, coro).value.retval;
     try std.testing.expectEqual(retval, error.SomethingBad);
 }
 

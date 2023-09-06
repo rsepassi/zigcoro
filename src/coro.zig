@@ -133,7 +133,7 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
         func: if (is_comptime_func) void else *const Sig.Func,
         args: ArgsTuple(Sig.Func),
         // Values that are produced during coroutine execution
-        values: union {
+        value: union {
             retval: Sig.getReturnT(),
             yieldval: Sig.YieldT,
             injectval: Sig.InjectT,
@@ -163,43 +163,43 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
         pub fn xresumeStart(co: *Coro) Sig.YieldT {
             xresumeTopLevel(co);
             const self = co.getStorage(@This());
-            return self.values.yieldval;
+            return self.value.yieldval;
         }
 
         // Final resume, takes injected value, returns coroutine's return value
         pub fn xresumeEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
             const self = co.getStorage(@This());
-            self.values = .{ .injectval = val };
+            self.value = .{ .injectval = val };
             xresumeTopLevel(co);
-            return self.values.retval;
+            return self.value.retval;
         }
 
         // Intermediate resume, takes injected value, returns yielded value
         pub fn xresume(co: *Coro, val: Sig.InjectT) Sig.YieldT {
             const self = co.getStorage(@This());
-            self.values = .{ .injectval = val };
+            self.value = .{ .injectval = val };
             xresumeTopLevel(co);
-            return self.values.yieldval;
+            return self.value.yieldval;
         }
 
         // Yields value, returns injected value
         pub fn xyield(val: Sig.YieldT) Sig.InjectT {
             const self = xcurrentStorage(@This());
-            self.values = .{ .yieldval = val };
+            self.value = .{ .yieldval = val };
             xsuspend();
-            return self.values.injectval;
+            return self.value.injectval;
         }
 
         // Returns the value the coroutine returned
         pub fn xreturned(co: *Coro) Sig.getReturnT() {
             const self = co.getStorage(@This());
-            return self.values.retval;
+            return self.value.retval;
         }
 
         fn wrapfn() void {
             const self: *@This() = xcurrentStorage(@This());
-            self.values = .{ .retval = @call(
-                .auto,
+            self.value = .{ .retval = @call(
+                if (is_comptime_func) .always_inline else .auto,
                 if (is_comptime_func) Sig.func_ptr.?.val else self.func,
                 self.args,
             ) };
