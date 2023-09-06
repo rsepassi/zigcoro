@@ -15,7 +15,6 @@ pub fn build(b: *std.Build) !void {
     });
 
     {
-        // Test
         const coro_test = b.addTest(.{
             .name = "corotest",
             .root_source_file = .{ .path = "src/test.zig" },

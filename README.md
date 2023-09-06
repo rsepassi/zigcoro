@@ -23,11 +23,11 @@ supports {Linux, Mac} `aarch64`.*
 
 ## Current status
 
-*Updated 2023/09/05*
+*Updated 2023/09/06*
 
-Alpha.
+Alpha, WIP.
 
-Next steps are to further explore cooperative multitasking.
+Further exploring concurrency and cooperative multitasking atop `libxev`.
 
 ## Coroutine API
 
@@ -240,6 +240,7 @@ Contributions welcome.
 ## Inspirations
 
 * ["Revisiting Coroutines"][coropaper] by de Moura & Ierusalimschy
+* [Lua coroutines](https://www.lua.org/pil/9.1.html)
 * https://github.com/edubart/minicoro
 * https://github.com/kurocha/coroutine
 * https://github.com/kprotty/zefi
