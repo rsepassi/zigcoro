@@ -220,13 +220,17 @@ ns/ctxswitch: 233
 
 Contributions welcome.
 
+* Multi-threading support
 * Libraries
-  * (WIP) Task library: schedulers, futures, cancellation
+  * TLS, HTTP, WebSocket
+  * Actors
   * Recursive data structure iterators
   * Parsers
+* Alternative async IO loops (e.g. libuv)
 * Debugging
     * Coro names
     * Tracing tools
+    * Dependency graphs
     * Detect incomplete coroutines
     * ASAN, TSAN, Valgrind support
 * Make it so that it's as easy as possible to switch to Zig's async when it's
@@ -240,6 +244,16 @@ Contributions welcome.
 
 ### TODO
 
+* Concurrent execution with async/await-like semantics and helpers
+  (waitAll, waitFirst, asReady, ...).
+* Cancellation and timeouts
+* Async iterators
+* Revisit storage of args/return/yield.
+  * Considering lifetimes, args and yields/injects need to be
+    available for the duration of the coroutine, while the return
+    outlasts the coroutine. Return storage should probably be on
+    the outside, but argument storage can probably safely be moved
+    into the coroutine stack without compromising useful control.
 * Revisit CoroFunc state machine:
   * If a coroutine errors, it will be in the Done state and retval will be set
     to the error. The caller in that situation will have to test whether the
