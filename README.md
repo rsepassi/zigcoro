@@ -18,7 +18,7 @@ supports {Linux, Mac} `aarch64`.*
 Alpha, WIP.
 
 `zigcoro` already provides a decent async/await-like programming model. Use
-`asycnio.run` at the top-level to launch your main coroutine, and then within
+`asyncio.run` at the top-level to launch your main coroutine, and then within
 that, call any of the IO functions (that wrap `libxev`) directly, or create
 several coroutines and use `asyncio.xawait` to run them concurrently and
 await them.
