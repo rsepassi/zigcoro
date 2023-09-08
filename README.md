@@ -17,22 +17,28 @@ supports {Linux, Mac} `aarch64`.*
 
 Alpha, WIP.
 
-Currently fleshing out async io atop `libxev`. See [TODOs](#TODO) for current work.
+`zigcoro` already provides a decent async/await-like programming model. Use
+`asycnio.run` at the top-level to launch your main coroutine, and then within
+that, call any of the IO functions (that wrap `libxev`) directly, or create
+several coroutines and use `asyncio.xawait` to run them concurrently and
+await them.
+
+See [TODOs](#TODO) for active work.
 
 ## Coroutine API
 
 ```
 xcurrent()->*Coro
 xcurrentStorage(T)->*T
-xresume(*coro)
+xresume(coro)
 xsuspend()
 Coro
-  init(*func, *stack, ?*storage)
-  getStorage(T)
+  init(func, *stack, ?*storage)
+  getStorage(T)->*T
 CoroFunc(Fn)
   init()
-  coro(args, stack)->Coro
-  coroPtr(func, args, stack)->Coro
+  coro(args, *stack)->Coro
+  coroPtr(func, args, *stack)->Coro
   xnextStart(coro)->YieldT
   xnext(coro, inject)->YieldT
   xnextEnd(coro, inject)->ReturnT
@@ -47,9 +53,9 @@ remainingStackSize()->usize
 ## Async IO API
 
 [`libcoro.asyncio`][aio] provides coroutine-based async IO functionality
-building upon the evented IO system of [`libxev`][libxev]. It provides
-coroutine-friendly wrappers to all the [high-level async
-APIs][libxev-watchers] in [`libxev`][libxev].
+building upon the event loop from [`libxev`][libxev]. It provides
+coroutine-friendly wrappers to all the [high-level async APIs][libxev-watchers]
+in [`libxev`][libxev].
 
 See [`test_aio.zig`][test-aio] for usage examples.
 
@@ -97,7 +103,8 @@ to `asyncio.xawait`.
 `build.zig.zon`
 ```zig
 .zigcoro = .{
-  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/s0mEg1tHasH",
+  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.3.0",
+  .hash = "1220faf5be8c993501d6547e0ed1d69a1bc9b82f4aecb2646c59c1482206c384e8db",
 },
 ```
 
@@ -218,17 +225,18 @@ applications, including nonblocking IO.
 
 Contributions welcome.
 
-* Multi-threading support
 * Simple coro stack allocator, reusing stacks
 * Libraries
   * TLS, HTTP, WebSocket
   * Actors
   * Recursive data structure iterators
   * Parsers
-* Alternative async IO loops (e.g. libuv)
+* Multi-threading support
+* Alternative async IO loops (e.g. [libuv][libuv])
 * Debugging
     * Coro names
     * Tracing tools
+    * Verbose logging
     * Dependency graphs
     * Detect incomplete coroutines
     * ASAN, TSAN, Valgrind support
@@ -243,9 +251,8 @@ Contributions welcome.
 
 ### TODO
 
-* Concurrent execution with async/await-like semantics and helpers
-  (waitAll, waitFirst, asReady, ...).
-* Cancellation and timeouts
+* Concurrent execution helpers (xawaitAsReady, xawaitFirst, ...).
+* Add support for cancellation and timeouts
 * Async iterators
 * Better coroutine error propagation
   * If a coroutine errors, it will be in the Done state and retval will be set
@@ -269,6 +276,6 @@ Contributions welcome.
 [libxev-watchers]: https://github.com/mitchellh/libxev/tree/main/src/watcher
 [libuv]: https://libuv.org
 [struccon]: https://ericniebler.com/2020/11/08/structured-concurrency
-[aio]: https://github.com/rsepassi/zigcoro/blob/main/src/asyncio.zig
+[aio]: https://github.com/rsepassi/zigcoro/blob/main/src/aio_xev.zig
 [test-aio]: https://github.com/rsepassi/zigcoro/blob/main/src/test_aio.zig
 [lua-coro]: https://www.lua.org/pil/9.1.html
