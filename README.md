@@ -247,13 +247,7 @@ Contributions welcome.
   (waitAll, waitFirst, asReady, ...).
 * Cancellation and timeouts
 * Async iterators
-* Revisit storage of args/return/yield.
-  * Considering lifetimes, args and yields/injects need to be
-    available for the duration of the coroutine, while the return
-    outlasts the coroutine. Return storage should probably be on
-    the outside, but argument storage can probably safely be moved
-    into the coroutine stack without compromising useful control.
-* Revisit CoroFunc state machine:
+* Better coroutine error propagation
   * If a coroutine errors, it will be in the Done state and retval will be set
     to the error. The caller in that situation will have to test whether the
     coro is Done to call xreturned instead of xnext. The YieldT should probably
