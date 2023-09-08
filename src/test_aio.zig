@@ -41,7 +41,7 @@ const AioTest = struct {
     }
 
     fn run(self: @This(), func: anytype) !void {
-        const stack = try libcoro.stackAlloc(self.allocator, 1024 * 8);
+        const stack = try libcoro.stackAlloc(self.allocator, 1024 * 32);
         defer self.allocator.free(stack);
         try aio.run(self.loop, func, .{}, stack);
     }
