@@ -2,17 +2,7 @@
 
 Async Zig as a library using stackful asymmetric coroutines.
 
-* Stackful: each coroutine has an explicitly allocated stack and
-  suspends/yields preserve the entire call stack of the coroutine. An
-  ergonomic "stackless" implementation would require language support and
-  that's what we expect to see with Zig's async functionality.
-* Asymmetric: coroutines are nested such that there is a "caller"/"callee"
-  relationship, starting with a root coroutine per thread. The caller coroutine
-  is the parent such that upon completion of the callee (the child coroutine),
-  control will transfer to the caller. Intermediate yields/suspends transfer
-  control to the last resuming coroutine.
-
-Async IO is provided by [`libxev`][libxev].
+Supports async IO via [`libxev`][libxev].
 
 ---
 
@@ -23,18 +13,15 @@ supports {Linux, Mac} `aarch64`.*
 
 ## Current status
 
-*Updated 2023/09/06*
+*Updated 2023/09/08*
 
 Alpha, WIP.
 
-Further exploring (structured) concurrency and cooperative multitasking atop
-`libxev` using coroutines.
+Currently fleshing out async io atop `libxev`. See [TODOs](#TODO) for current work.
 
 ## Coroutine API
 
 ```
-stackAlloc(allocator, size)->[]u8
-remainingStackSize()->usize
 xcurrent()->*Coro
 xcurrentStorage(T)->*T
 xresume(*coro)
@@ -43,28 +30,38 @@ Coro
   init(*func, *stack, ?*storage)
   getStorage(T)
 CoroFunc(Fn)
-  init(.{args})
-  initPtr(&fn, .{args})
-  coro(*stack)->Coro
-  xresumeStart()->YieldT
-  xresume(inject)->YieldT
-  xresumeEnd(inject)->ReturnT
+  init()
+  coro(args, stack)->Coro
+  coroPtr(func, args, stack)->Coro
+  xnextStart(coro)->YieldT
+  xnext(coro, inject)->YieldT
+  xnextEnd(coro, inject)->ReturnT
   xyield(yield)->InjectT
-StackCoro
-  init(*func, .{args}, *stack)
-  frame(*func, coro)->CoroFunc(Fn)
+  xreturned(coro)->ReturnT
+
+# Stack utilities
+stackAlloc(allocator, size)->[]u8
+remainingStackSize()->usize
 ```
 
 ## Async IO API
 
-`libcoro.xev.aio` provides coroutine-friendly wrappers to all the [high-level
-async APIs][libxev-watchers] in [`libxev`][libxev].
+[`libcoro.asyncio`][aio] provides coroutine-based async IO functionality
+building upon the evented IO system of [`libxev`][libxev]. It provides
+coroutine-friendly wrappers to all the [high-level async
+APIs][libxev-watchers] in [`libxev`][libxev].
 
-See
-[`aio_test.zig`](https://github.com/rsepassi/zigcoro/blob/main/aio_test.zig)
-for usage examples.
+See [`test_aio.zig`][test-aio] for usage examples.
 
 ```
+# Run top-level coroutines in the event loop
+run
+runCoro
+
+# Concurrently run N coroutines and wait for all to complete
+xawait
+
+# IO
 sleep
 TCP
   accept
@@ -89,17 +86,11 @@ Async
   wait
 ```
 
-Stackful asymmetric coroutines provide a clean way of wrapping up async IO
-functionality, providing a programming model akin to threads (where the lightweight
-versions are variously called Coroutines, Green Threads, or Fibers). Calls to
-IO functionality are blocking from the perspective of the coroutine, but many
-coroutines can be running on the same thread.
+The IO functions are run from within a coroutine and appear as blocking, but
+internally they suspend so that other coroutines can progress.
 
-Under the hood, what's required is async IO functionality, such that a coroutine
-can submit work to be done, suspend, and then be resumed when the work is complete.
-Libraries like [libuv][libuv] and [libxev][libxev] provide cross-platform async IO,
-and this is a new Zig project, so why not depend on another new Zig project like
-libxev?
+To run several coroutines concurrently, create the coroutines and pass them
+to `asyncio.xawait`.
 
 ## Depend
 
@@ -115,15 +106,6 @@ libxev?
 const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
 my_lib.addModule("libcoro", libcoro);
 ```
-
-## Coroutine Examples
-
-*TODO: Fill back in*
-
-* resume, suspend
-* storage
-* args, return
-* yield, inject
 
 ## Performance
 
@@ -216,11 +198,28 @@ ns/ctxswitch: 233
 ...
 ```
 
+## Stackful asymmetric coroutines
+
+* Stackful: each coroutine has an explicitly allocated stack and
+  suspends/yields preserve the entire call stack of the coroutine. An
+  ergonomic "stackless" implementation would require language support and
+  that's what we expect to see with Zig's async functionality.
+* Asymmetric: coroutines are nested such that there is a "caller"/"callee"
+  relationship, starting with a root coroutine per thread. The caller coroutine
+  is the parent such that upon completion of the callee (the child coroutine),
+  control will transfer to the caller. Intermediate yields/suspends transfer
+  control to the last resuming coroutine.
+
+The wonderful 2009 paper ["Revisiting Coroutines"][coropaper] describes the
+power of stackful asymmetric coroutines in particular and their various
+applications, including nonblocking IO.
+
 ## Future work
 
 Contributions welcome.
 
 * Multi-threading support
+* Simple coro stack allocator, reusing stacks
 * Libraries
   * TLS, HTTP, WebSocket
   * Actors
@@ -263,7 +262,8 @@ Contributions welcome.
 ## Inspirations
 
 * ["Revisiting Coroutines"][coropaper] by de Moura & Ierusalimschy
-* [Lua coroutines](https://www.lua.org/pil/9.1.html)
+* [Lua coroutines][lua-coro]
+* ["Structured Concurrency"][struccon] by Eric Niebler
 * https://github.com/edubart/minicoro
 * https://github.com/kurocha/coroutine
 * https://github.com/kprotty/zefi
@@ -274,3 +274,7 @@ Contributions welcome.
 [libxev]: https://github.com/mitchellh/libxev
 [libxev-watchers]: https://github.com/mitchellh/libxev/tree/main/src/watcher
 [libuv]: https://libuv.org
+[struccon]: https://ericniebler.com/2020/11/08/structured-concurrency
+[aio]: https://github.com/rsepassi/zigcoro/blob/main/src/asyncio.zig
+[test-aio]: https://github.com/rsepassi/zigcoro/blob/main/src/test_aio.zig
+[lua-coro]: https://www.lua.org/pil/9.1.html
