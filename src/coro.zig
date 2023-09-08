@@ -7,7 +7,7 @@ const base = @import("coro_base.zig");
 //   * current_coro: set in ThreadState.switchTo
 //   * next_coro_id: set in ThreadState.nextCoroId
 // * Coro
-//   * parent: set in ThreadState.switchTo
+//   * resumer: set in ThreadState.switchTo
 //   * status:
 //     * Active, Suspended: set in ThreadState.switchTo
 //     * Done: set in runcoro
@@ -18,13 +18,19 @@ const base = @import("coro_base.zig");
 pub const Error = @import("errors.zig").Error;
 pub const StackT = []align(base.stack_align) u8;
 pub const stack_align = base.stack_align;
-pub const default_stack_size = 1024 * 4;
-pub const xev = struct {
-    pub const aio = @import("xev.zig");
+pub const default_stack_size = blk: {
+    const root = @import("root");
+    if (@hasDecl(root, "libcoro_options") and
+        @hasDecl(root.libcoro_options, "default_stack_size"))
+    {
+        break :blk root.libcoro_options.default_stack_size;
+    }
+    break :blk 1024 * 4;
 };
 
 // Coroutine status
 pub const CoroStatus = enum {
+    Start,
     Suspended,
     Active,
     Done,
@@ -47,13 +53,16 @@ pub fn xcurrentStorage(comptime T: type) *T {
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
-// When the resumed coroutine yields, this call will return.
+// When the resumed coroutine suspends, this call will return.
+// Note: When the resumed coroutine returns, control will switch to its parent
+// (i.e. its original resumer).
 pub fn xresume(coro: *Coro) void {
     thread_state.switchIn(coro);
 }
 
-// Suspend the current coroutine, yielding control back to the parent.
-// Returns when the coroutine is resumed.
+// Suspend the current coroutine, yielding control back to its
+// resumer. Returns when the coroutine is resumed.
+// Must be called from within a coroutine (i.e. not the top level).
 pub fn xsuspend() void {
     xsuspendSafe() catch unreachable;
 }
@@ -61,7 +70,7 @@ pub fn xsuspendSafe() Error!void {
     if (thread_state.current_coro == null) return Error.SuspendFromMain;
     const coro = thread_state.current_coro.?;
     try checkStackOverflow(coro);
-    thread_state.switchOut(coro.parent);
+    thread_state.switchOut(coro.resumer);
 }
 
 pub const Coro = struct {
@@ -72,28 +81,31 @@ pub const Coro = struct {
     // Architecture-specific implementation
     impl: base.Coro,
     // The coroutine that will be yielded to upon suspend
-    parent: *Coro = undefined,
-    // Current status, starts suspended
-    status: CoroStatus = .Suspended,
+    resumer: *Coro = undefined,
+    // Current status, starts in Start
+    status: CoroStatus = .Start,
     // Coro id, {thread, coro id, invocation id}
     id: CoroInvocationId,
     // Caller-specified storage
-    storage: ?*const anyopaque = null,
+    storage: ?*anyopaque = null,
 
-    pub fn init(func: *const fn () void, stack: StackT, storage: ?*const anyopaque) !@This() {
+    pub fn init(func: *const fn () void, stack: StackT, storage: ?*anyopaque) !*@This() {
         try setMagicNumber(stack);
-        const base_coro = try base.Coro.init(&runcoro, stack);
-        return .{
+        var s = Stack.init(stack);
+        var coro = try s.push(Coro);
+        const base_coro = try base.Coro.init(&runcoro, s.remaining());
+        coro.* = @This(){
             .func = func,
             .impl = base_coro,
             .stack = stack,
             .storage = storage,
             .id = CoroInvocationId.init(),
         };
+        return coro;
     }
 
     pub fn getStorage(self: @This(), comptime T: type) *T {
-        return @ptrCast(@constCast(@alignCast(self.storage)));
+        return @ptrCast(@alignCast(self.storage));
     }
 };
 
@@ -110,6 +122,17 @@ pub const CoroSignature = struct {
     // it can be held here.
     func_ptr: ?type = null,
 
+    pub fn init(comptime Func: anytype, comptime options: FrameOptions) @This() {
+        return .{
+            .Func = if (@TypeOf(Func) == type) Func else @TypeOf(Func),
+            .YieldT = options.YieldT,
+            .InjectT = options.InjectT,
+            .func_ptr = if (@TypeOf(Func) == type) null else struct {
+                const val = Func;
+            },
+        };
+    }
+
     pub fn getReturnT(comptime self: @This()) type {
         return @typeInfo(self.Func).Fn.return_type.?;
     }
@@ -121,57 +144,78 @@ pub const FrameOptions = struct {
 };
 
 pub fn CoroFunc(comptime Func: anytype, comptime options: FrameOptions) type {
-    return CoroFuncSig(.{
-        .Func = if (@TypeOf(Func) == type) Func else @TypeOf(Func),
-        .YieldT = options.YieldT,
-        .InjectT = options.InjectT,
-        .func_ptr = if (@TypeOf(Func) == type) null else struct {
-            const val = Func;
-        },
-    });
+    return CoroFuncSig(CoroSignature.init(Func, options));
 }
 
 pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
     const is_comptime_func = Sig.func_ptr != null;
-    return struct {
-        pub const Signature = Sig;
+    const ArgsT = ArgsTuple(Sig.Func);
+    // Stored in the coro stack
+    const InnerStorage = struct {
         func: if (is_comptime_func) void else *const Sig.Func,
-        args: ArgsTuple(Sig.Func),
+        args: ArgsT,
+        retval: *Sig.getReturnT(),
         // Values that are produced during coroutine execution
         value: union {
-            retval: Sig.getReturnT(),
             yieldval: Sig.YieldT,
             injectval: Sig.InjectT,
         } = undefined,
+    };
 
-        // Initialize frame with args
-        // Function pointer be comptime known
-        pub fn init(args: anytype) @This() {
-            if (!is_comptime_func) {
-                @compileError("init requires function pointer to be comptime known. Use initPtr for runtime-only-known function pointers");
-            }
-            return .{ .func = {}, .args = args };
-        }
+    return struct {
+        pub const Signature = Sig;
+        retval: Sig.getReturnT() = undefined,
+        stack: StackT = undefined,
 
-        pub fn initPtr(func: *const Sig.Func, args: anytype) @This() {
-            return .{ .func = func, .args = args };
+        pub fn init() @This() {
+            return .{};
         }
 
         // Create a Coro
-        // CoroFunc and stack pointers must remain stable for the lifetime of
+        // self and stack pointers must remain stable for the lifetime of
         // the coroutine.
-        pub fn coro(self: *@This(), stack: StackT) !Coro {
-            return try Coro.init(wrapfn, stack, self);
+        pub fn coro(
+            self: *@This(),
+            args: ArgsT,
+            stack: StackT,
+        ) !*Coro {
+            self.stack = stack;
+            var s = Stack.init(stack);
+            var inner = try s.push(InnerStorage);
+            inner.* = .{
+                .func = {},
+                .args = args,
+                .retval = &self.retval,
+            };
+            return try Coro.init(wrapfn, s.remaining(), inner);
+        }
+
+        // Same as coro but with a runtime-defined function pointer.
+        pub fn coroPtr(
+            self: *@This(),
+            func: *const Sig.Func,
+            args: anytype,
+            stack: StackT,
+        ) !*Coro {
+            var s = Stack.init(stack);
+            var inner = try s.push(InnerStorage);
+            inner.* = .{
+                .func = func,
+                .args = args,
+                .retval = &self.retval,
+            };
+            return try Coro.init(wrapfn, s.remaining(), inner);
         }
 
         // Coroutine functions.
         //
         // When considering basic coroutine execution, the coroutine state
         // machine is:
-        // * Suspended
-        // * Suspended->libcoro.xresume->Active
+        // * Start
+        // * Start->libcoro.xresume->Active
         // * Active->libcoro.xsuspend->Suspended
         // * Active->(fn returns)->Done
+        // * Suspended->libcoro.xresume->Active
         //
         // When considering interacting with the storage values (yields/injects
         // and returns), the coroutine state machine is:
@@ -190,21 +234,21 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
         // Initial resume, takes no injected value, returns yielded value
         pub fn xnextStart(co: *Coro) Sig.YieldT {
             xresume(co);
-            const self = co.getStorage(@This());
+            const self = co.getStorage(InnerStorage);
             return self.value.yieldval;
         }
 
         // Final resume, takes injected value, returns coroutine's return value
         pub fn xnextEnd(co: *Coro, val: Sig.InjectT) Sig.getReturnT() {
-            const self = co.getStorage(@This());
+            const self = co.getStorage(InnerStorage);
             self.value = .{ .injectval = val };
             xresume(co);
-            return self.value.retval;
+            return self.retval.*;
         }
 
         // Intermediate resume, takes injected value, returns yielded value
         pub fn xnext(co: *Coro, val: Sig.InjectT) Sig.YieldT {
-            const self = co.getStorage(@This());
+            const self = co.getStorage(InnerStorage);
             self.value = .{ .injectval = val };
             xresume(co);
             return self.value.yieldval;
@@ -212,7 +256,7 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
 
         // Yields value, returns injected value
         pub fn xyield(val: Sig.YieldT) Sig.InjectT {
-            const self = xcurrentStorage(@This());
+            const self = xcurrentStorage(InnerStorage);
             self.value = .{ .yieldval = val };
             xsuspend();
             return self.value.injectval;
@@ -220,51 +264,20 @@ pub fn CoroFuncSig(comptime Sig: CoroSignature) type {
 
         // Returns the value the coroutine returned
         pub fn xreturned(co: *Coro) Sig.getReturnT() {
-            const self = co.getStorage(@This());
-            return self.value.retval;
+            const self = co.getStorage(InnerStorage);
+            return self.retval.*;
         }
 
         fn wrapfn() void {
-            const self: *@This() = xcurrentStorage(@This());
-            self.value = .{ .retval = @call(
+            const self = xcurrentStorage(InnerStorage);
+            self.retval.* = @call(
                 if (is_comptime_func) .always_inline else .auto,
                 if (is_comptime_func) Sig.func_ptr.?.val else self.func,
                 self.args,
-            ) };
+            );
         }
     };
 }
-
-fn ArgsTuple(comptime Fn: type) type {
-    const out = std.meta.ArgsTuple(Fn);
-    if (std.meta.fields(out).len == 0) return @TypeOf(.{});
-    return out;
-}
-
-// StackCoro creates a Coro with a CoroFunc stored at the top of the provided
-// stack.
-pub const StackCoro = struct {
-    pub fn init(
-        func: anytype,
-        args: anytype,
-        stack: StackT,
-        comptime options: FrameOptions,
-    ) !Coro {
-        const FrameT = CoroFunc(@TypeOf(func), options);
-        const ptr = try stackPush(stack, FrameT.initPtr(func, args));
-        var reduced_stack = stack[0 .. @intFromPtr(ptr) - @intFromPtr(stack.ptr)];
-        var f: *FrameT = @ptrCast(@alignCast(ptr));
-        return f.coro(reduced_stack);
-    }
-
-    pub fn frame(
-        func: anytype,
-        comptime options: FrameOptions,
-        coro: Coro,
-    ) *CoroFunc(@TypeOf(func), options) {
-        return @ptrCast(@alignCast(coro.stack.ptr + coro.stack.len));
-    }
-};
 
 // Estimates the remaining stack size in the currently running coroutine
 pub noinline fn remainingStackSize() usize {
@@ -311,10 +324,10 @@ const ThreadState = struct {
         self.switchTo(target, false);
     }
 
-    fn switchTo(self: *@This(), target: *Coro, set_parent: bool) void {
+    fn switchTo(self: *@This(), target: *Coro, set_resumer: bool) void {
         const suspender = self.current();
         if (suspender.status != .Done) suspender.status = .Suspended;
-        if (set_parent) target.parent = suspender;
+        if (set_resumer) target.resumer = suspender;
         target.status = .Active;
         target.id.incr();
         self.current_coro = target;
@@ -335,12 +348,17 @@ const ThreadState = struct {
     }
 };
 
+fn ArgsTuple(comptime Fn: type) type {
+    const out = std.meta.ArgsTuple(Fn);
+    return if (std.meta.fields(out).len == 0) @TypeOf(.{}) else out;
+}
+
 fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
-    _ = from;
+    const from_coro = @fieldParentPtr(Coro, "impl", from);
     const target_coro = @fieldParentPtr(Coro, "impl", target);
     @call(.auto, target_coro.func, .{});
     target_coro.status = .Done;
-    thread_state.switchOut(target_coro.parent);
+    thread_state.switchOut(from_coro);
 
     // Never returns
     const err_msg = "Cannot resume an already completed coroutine {any}";
@@ -353,20 +371,35 @@ fn runcoro(from: *base.Coro, target: *base.Coro) callconv(.C) noreturn {
     });
 }
 
-fn stackPush(stack: StackT, val: anytype) ![*]u8 {
-    const T = @TypeOf(val);
-    const ptr_i = std.mem.alignBackward(
-        usize,
-        @intFromPtr(stack.ptr + stack.len - @sizeOf(T)),
-        stack_align,
-    );
-    if (ptr_i <= @intFromPtr(stack.ptr)) {
-        return Error.StackTooSmall;
+const Stack = struct {
+    full: StackT,
+    sp: [*]u8,
+
+    fn init(stack: StackT) @This() {
+        return .{
+            .full = stack,
+            .sp = stack.ptr + stack.len,
+        };
     }
-    const ptr: *T = @ptrFromInt(ptr_i);
-    ptr.* = val;
-    return @ptrFromInt(ptr_i);
-}
+
+    fn remaining(self: @This()) StackT {
+        return self.full[0 .. @intFromPtr(self.sp) - @intFromPtr(self.full.ptr)];
+    }
+
+    fn push(self: *@This(), comptime T: type) !*T {
+        const ptr_i = std.mem.alignBackward(
+            usize,
+            @intFromPtr(self.sp - @sizeOf(T)),
+            stack_align,
+        );
+        if (ptr_i <= @intFromPtr(self.full.ptr)) {
+            return Error.StackTooSmall;
+        }
+        const ptr: *T = @ptrFromInt(ptr_i);
+        self.sp = @ptrFromInt(ptr_i);
+        return ptr;
+    }
+};
 
 const CoroId = struct {
     thread: std.Thread.Id,

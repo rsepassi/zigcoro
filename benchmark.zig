@@ -28,9 +28,9 @@ fn contextSwitchBm() !void {
         {
             var test_coro = try libcoro.Coro.init(testFn, stack, null);
             for (0..num_bounces) |_| {
-                libcoro.xresume(&test_coro);
+                libcoro.xresume(test_coro);
             }
-            libcoro.xresume(&test_coro);
+            libcoro.xresume(test_coro);
         }
 
         num_bounces = 20_000_000;
@@ -39,14 +39,14 @@ fn contextSwitchBm() !void {
 
             const start = std.time.nanoTimestamp();
             for (0..num_bounces) |_| {
-                libcoro.xresume(&test_coro);
+                libcoro.xresume(test_coro);
             }
             const end = std.time.nanoTimestamp();
             const duration = end - start;
             const ns_per_bounce = @divFloor(duration, num_bounces * 2);
             std.debug.print("ns/ctxswitch: {d}\n", .{ns_per_bounce});
 
-            libcoro.xresume(&test_coro);
+            libcoro.xresume(test_coro);
         }
     }
 }
@@ -113,7 +113,7 @@ fn ncorosBm(num_coros: usize) !void {
     std.debug.print("Running {d} coroutines for {d} rounds\n", .{ num_coros, rounds });
 
     // number of coroutines benchmark
-    var coros = try allocator.alloc(libcoro.Coro, num_coros);
+    var coros = try allocator.alloc(*libcoro.Coro, num_coros);
     defer allocator.free(coros);
 
     var buf = try allocator.alloc(u8, num_coros * 1024 * 4);
@@ -130,7 +130,7 @@ fn ncorosBm(num_coros: usize) !void {
 
     var start = std.time.nanoTimestamp();
     for (0..rounds) |i| {
-        for (coros) |*coro| {
+        for (coros) |coro| {
             libcoro.xresume(coro);
         }
         if ((i + 1) % batching == 0) {

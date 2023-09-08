@@ -8,7 +8,7 @@ pub fn build(b: *std.Build) !void {
 
     // Module
     const coro = b.addModule("libcoro", .{
-        .source_file = .{ .path = "src/coro.zig" },
+        .source_file = .{ .path = "src/main.zig" },
         .dependencies = &[_]std.Build.ModuleDependency{
             .{ .name = "xev", .module = xev },
         },
