@@ -27,7 +27,7 @@ pub fn runCoro(loop: *xev.Loop, co: *libcoro.Coro) !void {
     std.debug.assert(co.status == .Start);
     libcoro.xresume(co);
     while (co.status != .Done) {
-        try loop.tick(1);
+        try loop.run(.once);
     }
 }
 
