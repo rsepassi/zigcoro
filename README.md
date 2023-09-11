@@ -246,19 +246,23 @@ Contributions welcome.
 * Broader architecture support
   * risc-v
   * 32-bit
-  * WASM
+  * WASM (Asyncify?)
   * comptime?
 
 ### TODO
 
+* API polishing to better match Zig async
 * Concurrent execution helpers (xawaitAsReady, xawaitFirst, ...).
 * Add support for cancellation and timeouts
-* Async iterators
-* Better coroutine error propagation
+* Async iterators/streams
+* Better (typed) coroutine error propagation (CoroFunc)
   * If a coroutine errors, it will be in the Done state and retval will be set
     to the error. The caller in that situation will have to test whether the
     coro is Done to call xreturned instead of xnext. The YieldT should probably
     be augmented with the error type (if it exists) of the fn return type.
+* HTTP client and server
+* Documentation, code comments, examples
+* Write up
 
 ## Inspirations
 
