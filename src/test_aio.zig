@@ -47,6 +47,12 @@ const AioTest = struct {
     }
 };
 
+test "aio sleep top-level" {
+    const t = try AioTest.init();
+    defer t.deinit();
+    try aio.sleep(t.loop, 100);
+}
+
 fn sleep(ms: u64) !i64 {
     try aio.sleep(env.loop, ms);
     try std.testing.expect(libcoro.remainingStackSize() > 1024 * 2);

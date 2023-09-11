@@ -43,8 +43,8 @@ pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
 }
 
 // Returns the currently running coroutine
-pub fn xcurrent() *Coro {
-    return thread_state.current_coro.?;
+pub fn xcurrent() ?*Coro {
+    return thread_state.current_coro;
 }
 
 // Returns the storage of the currently running coroutine
@@ -286,7 +286,7 @@ pub noinline fn remainingStackSize() usize {
     const addr = @intFromPtr(&dummy);
 
     // Check if the stack was already overflowed
-    const current = xcurrent();
+    const current = xcurrent().?;
     if (getMagicNumber(current.stack) != magic_number) return 0;
 
     // Check if the stack is currently overflowed

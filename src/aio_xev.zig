@@ -75,7 +75,7 @@ pub fn xawait(coros: anytype) void {
 }
 
 const SleepResult = xev.Timer.RunError!void;
-pub fn sleep(loop: *xev.Loop, ms: u64) SleepResult {
+pub fn sleep(loop: *xev.Loop, ms: u64) !void {
     const Data = XCallback(SleepResult);
 
     var data = Data.init();
@@ -84,9 +84,21 @@ pub fn sleep(loop: *xev.Loop, ms: u64) SleepResult {
     var c: xev.Completion = .{};
     w.run(loop, &c, ms, Data, &data, &Data.callback);
 
-    libcoro.xsuspend();
+    try waitForCompletion(loop, &c);
 
     return data.result;
+}
+
+fn waitForCompletion(loop: *xev.Loop, c: *xev.Completion) !void {
+    if (libcoro.xcurrent() == null) {
+        // Not in a coroutine, blocking call
+        while (c.state() != .dead) {
+            try loop.run(.once);
+        }
+    } else {
+        // In a coroutine; wait for it to be resumed
+        libcoro.xsuspend();
+    }
 }
 
 pub const TCP = struct {
@@ -109,7 +121,7 @@ pub const TCP = struct {
         return self.tcp;
     }
 
-    pub fn accept(self: Self) xev.TCP.AcceptError!Self {
+    pub fn accept(self: Self) !Self {
         const AcceptResult = xev.TCP.AcceptError!xev.TCP;
         const Data = XCallback(AcceptResult);
 
@@ -117,7 +129,7 @@ pub const TCP = struct {
         var c: xev.Completion = .{};
         self.tcp.accept(self.loop, &c, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         if (data.result) |result| {
             return .{ .loop = self.loop, .tcp = result };
@@ -125,11 +137,11 @@ pub const TCP = struct {
     }
 
     const ConnectResult = xev.TCP.ConnectError!void;
-    pub fn connect(self: Self, addr: std.net.Address) ConnectResult {
+    pub fn connect(self: Self, addr: std.net.Address) !void {
         const ResultT = ConnectResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -143,7 +155,7 @@ pub const TCP = struct {
                 _ = s;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -153,7 +165,7 @@ pub const TCP = struct {
         var c: xev.Completion = .{};
         self.tcp.connect(self.loop, &c, addr, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -163,7 +175,7 @@ pub const TCP = struct {
         const ResultT = ShutdownResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -177,7 +189,7 @@ pub const TCP = struct {
                 _ = s;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -187,7 +199,7 @@ pub const TCP = struct {
         var c: xev.Completion = .{};
         self.tcp.shutdown(self.loop, &c, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -205,11 +217,11 @@ fn Closeable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const CloseResult = xev.CloseError!void;
-        pub fn close(self: Self) CloseResult {
+        pub fn close(self: Self) !void {
             const ResultT = CloseResult;
             const Data = struct {
                 result: ResultT = undefined,
-                coro: *libcoro.Coro = undefined,
+                coro: ?*libcoro.Coro = null,
 
                 fn callback(
                     userdata: ?*@This(),
@@ -223,7 +235,7 @@ fn Closeable(comptime T: type, comptime StreamT: type) type {
                     _ = s;
                     const data = userdata.?;
                     data.result = result;
-                    libcoro.xresume(data.coro);
+                    if (data.coro != null) libcoro.xresume(data.coro.?);
                     return .disarm;
                 }
             };
@@ -233,7 +245,7 @@ fn Closeable(comptime T: type, comptime StreamT: type) type {
             var c: xev.Completion = .{};
             self.stream().close(self.loop, &c, Data, &data, &Data.callback);
 
-            libcoro.xsuspend();
+            try waitForCompletion(self.loop, &c);
 
             return data.result;
         }
@@ -244,11 +256,11 @@ fn Readable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const ReadResult = xev.ReadError!usize;
-        pub fn read(self: Self, buf: xev.ReadBuffer) ReadResult {
+        pub fn read(self: Self, buf: xev.ReadBuffer) !usize {
             const ResultT = ReadResult;
             const Data = struct {
                 result: ResultT = undefined,
-                coro: *libcoro.Coro = undefined,
+                coro: ?*libcoro.Coro = null,
 
                 fn callback(
                     userdata: ?*@This(),
@@ -264,7 +276,7 @@ fn Readable(comptime T: type, comptime StreamT: type) type {
                     _ = b;
                     const data = userdata.?;
                     data.result = result;
-                    libcoro.xresume(data.coro);
+                    if (data.coro != null) libcoro.xresume(data.coro.?);
                     return .disarm;
                 }
             };
@@ -274,7 +286,7 @@ fn Readable(comptime T: type, comptime StreamT: type) type {
             var c: xev.Completion = .{};
             self.stream().read(self.loop, &c, buf, Data, &data, &Data.callback);
 
-            libcoro.xsuspend();
+            try waitForCompletion(self.loop, &c);
 
             return data.result;
         }
@@ -285,11 +297,11 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
     return struct {
         const Self = T;
         const WriteResult = xev.WriteError!usize;
-        pub fn write(self: Self, buf: xev.WriteBuffer) WriteResult {
+        pub fn write(self: Self, buf: xev.WriteBuffer) !usize {
             const ResultT = WriteResult;
             const Data = struct {
                 result: ResultT = undefined,
-                coro: *libcoro.Coro = undefined,
+                coro: ?*libcoro.Coro = null,
 
                 fn callback(
                     userdata: ?*@This(),
@@ -305,7 +317,7 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
                     _ = b;
                     const data = userdata.?;
                     data.result = result;
-                    libcoro.xresume(data.coro);
+                    if (data.coro != null) libcoro.xresume(data.coro.?);
                     return .disarm;
                 }
             };
@@ -315,8 +327,7 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
             var c: xev.Completion = .{};
             self.stream().write(self.loop, &c, buf, Data, &data, &Data.callback);
 
-            libcoro.xsuspend();
-
+            try waitForCompletion(self.loop, &c);
             return data.result;
         }
     };
@@ -348,7 +359,7 @@ pub const File = struct {
         const ResultT = PReadResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -364,7 +375,7 @@ pub const File = struct {
                 _ = b;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -374,7 +385,7 @@ pub const File = struct {
         var c: xev.Completion = .{};
         self.file.pread(self.loop, &c, buf, offset, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -384,7 +395,7 @@ pub const File = struct {
         const ResultT = PWriteResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -400,7 +411,7 @@ pub const File = struct {
                 _ = b;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -410,7 +421,7 @@ pub const File = struct {
         var c: xev.Completion = .{};
         self.file.pwrite(self.loop, &c, buf, offset, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -427,13 +438,13 @@ pub const Process = struct {
     }
 
     const WaitResult = xev.Process.WaitError!u32;
-    pub fn wait(self: Self) WaitResult {
+    pub fn wait(self: Self) !u32 {
         const Data = XCallback(WaitResult);
         var c: xev.Completion = .{};
         var data = Data.init();
         self.p.wait(self.loop, &c, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -450,14 +461,14 @@ pub const Async = struct {
     }
 
     const WaitResult = xev.Async.WaitError!void;
-    pub fn wait(self: Self) WaitResult {
+    pub fn wait(self: Self) !void {
         const Data = XCallback(WaitResult);
 
         var c: xev.Completion = .{};
         var data = Data.init();
         self.xasync.wait(self.loop, &c, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -484,11 +495,11 @@ pub const UDP = struct {
     }
 
     const ReadResult = xev.ReadError!usize;
-    pub fn read(self: Self, buf: xev.ReadBuffer) ReadResult {
+    pub fn read(self: Self, buf: xev.ReadBuffer) !usize {
         const ResultT = ReadResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -508,7 +519,7 @@ pub const UDP = struct {
                 _ = b;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -518,17 +529,17 @@ pub const UDP = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
         self.udp.read(self.loop, &c, &s, buf, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
 
     const WriteResult = xev.WriteError!usize;
-    pub fn write(self: Self, addr: std.net.Address, buf: xev.WriteBuffer) WriteResult {
+    pub fn write(self: Self, addr: std.net.Address, buf: xev.WriteBuffer) !usize {
         const ResultT = WriteResult;
         const Data = struct {
             result: ResultT = undefined,
-            coro: *libcoro.Coro = undefined,
+            coro: ?*libcoro.Coro = null,
 
             fn callback(
                 userdata: ?*@This(),
@@ -546,7 +557,7 @@ pub const UDP = struct {
                 _ = b;
                 const data = userdata.?;
                 data.result = result;
-                libcoro.xresume(data.coro);
+                if (data.coro != null) libcoro.xresume(data.coro.?);
                 return .disarm;
             }
         };
@@ -556,7 +567,7 @@ pub const UDP = struct {
         var data: Data = .{ .coro = libcoro.xcurrent() };
         self.udp.write(self.loop, &c, &s, addr, buf, Data, &data, &Data.callback);
 
-        libcoro.xsuspend();
+        try waitForCompletion(self.loop, &c);
 
         return data.result;
     }
@@ -572,7 +583,7 @@ fn RunT(comptime Func: anytype, comptime opts: libcoro.FrameOptions) type {
 
 fn XCallback(comptime ResultT: type) type {
     return struct {
-        coro: *libcoro.Coro,
+        coro: ?*libcoro.Coro = null,
         result: ResultT = undefined,
 
         fn init() @This() {
@@ -587,7 +598,7 @@ fn XCallback(comptime ResultT: type) type {
         ) xev.CallbackAction {
             const data = userdata.?;
             data.result = result;
-            libcoro.xresume(data.coro);
+            if (data.coro != null) libcoro.xresume(data.coro.?);
             return .disarm;
         }
     };
