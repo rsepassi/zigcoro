@@ -1,16 +1,22 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
+    // Options
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const default_stack_size = b.option(usize, "libcoro_default_stack_size", "Default stack size for coroutines") orelse 1024 * 4;
 
+    // Deps
     const xev = b.dependency("libxev", .{}).module("xev");
 
     // Module
+    const coro_options = b.addOptions();
+    coro_options.addOption(usize, "default_stack_size", default_stack_size);
     const coro = b.addModule("libcoro", .{
         .source_file = .{ .path = "src/main.zig" },
         .dependencies = &[_]std.Build.ModuleDependency{
             .{ .name = "xev", .module = xev },
+            .{ .name = "libcoro_options", .module = coro_options.createModule() },
         },
     });
 
@@ -25,9 +31,19 @@ pub fn build(b: *std.Build) !void {
         coro_test.addModule("xev", xev);
         coro_test.linkLibC();
 
+        const internal_test = b.addTest(.{
+            .name = "corotest-internal",
+            .root_source_file = .{ .path = "src/coro.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+        coro_test.addModule("xev", xev);
+        coro_test.linkLibC();
+
         // Test step
         const test_step = b.step("test", "Run tests");
         test_step.dependOn(&b.addRunArtifact(coro_test).step);
+        test_step.dependOn(&b.addRunArtifact(internal_test).step);
     }
 
     {

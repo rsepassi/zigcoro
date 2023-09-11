@@ -11,6 +11,22 @@ Supports async IO via [`libxev`][libxev].
 *[Tested][ci] weekly and on push on {Windows, Linux, Mac} `x86_64` with Zig v0.11. Also
 supports {Linux, Mac} `aarch64`.*
 
+## Depend
+
+`build.zig.zon`
+```zig
+.zigcoro = .{
+  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.3.0",
+  .hash = "1220faf5be8c993501d6547e0ed1d69a1bc9b82f4aecb2646c59c1482206c384e8db",
+},
+```
+
+`build.zig`
+```zig
+const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
+my_lib.addModule("libcoro", libcoro);
+```
+
 ## Current status
 
 *Updated 2023/09/08*
@@ -28,24 +44,29 @@ See [TODOs](#TODO) for active work.
 ## Coroutine API
 
 ```
-xcurrent()->*Coro
-xcurrentStorage(T)->*T
-xresume(coro)
+// High-level API
+xasync(func, args, *stack)->FrameT
+xawait(FrameT)->T
+xframe()->Frame
+xresume(frame)
 xsuspend()
-Coro
-  init(func, *stack, ?*storage)
-  getStorage(T)->*T
-CoroFunc(Fn)
-  init()
-  coro(args, *stack)->Coro
-  coroPtr(func, args, *stack)->Coro
-  xnextStart(coro)->YieldT
-  xnext(coro, inject)->YieldT
-  xnextEnd(coro, inject)->ReturnT
-  xyield(yield)->InjectT
-  xreturned(coro)->ReturnT
 
-# Stack utilities
+// Optional thread-local environment
+initEnv
+
+// Low-level API
+Coro (Frame=*Coro)
+  init(func, *stack, ?*storage)->Frame
+  getStorage(T)->*T
+CoroFunc(func, opts)
+  init(args, *stack)->Frame
+  xnextStart(frame)->YieldT
+  xnext(frame, inject)->YieldT
+  xnextEnd(frame, inject)->ReturnT
+  xyield(yield)->InjectT
+  xreturned(frame)->ReturnT
+
+// Stack utilities
 stackAlloc(allocator, size)->[]u8
 remainingStackSize()->usize
 ```
@@ -60,14 +81,14 @@ in [`libxev`][libxev].
 See [`test_aio.zig`][test-aio] for usage examples.
 
 ```
-# Run top-level coroutines in the event loop
+// Run top-level coroutines in the event loop
 run
 runCoro
 
-# Concurrently run N coroutines and wait for all to complete
-xawait
+// Optional thread-local environment
+initEnv
 
-# IO
+// IO
 sleep
 TCP
   accept
@@ -88,31 +109,12 @@ File
   write
   pwrite
   close
-Async
+AsyncNotification
   wait
 ```
 
 The IO functions are run from within a coroutine and appear as blocking, but
 internally they suspend so that other coroutines can progress.
-
-To run several coroutines concurrently, create the coroutines and pass them
-to `asyncio.xawait`.
-
-## Depend
-
-`build.zig.zon`
-```zig
-.zigcoro = .{
-  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.3.0",
-  .hash = "1220faf5be8c993501d6547e0ed1d69a1bc9b82f4aecb2646c59c1482206c384e8db",
-},
-```
-
-`build.zig`
-```zig
-const libcoro = b.dependency("zigcoro", .{}).module("libcoro");
-my_lib.addModule("libcoro", libcoro);
-```
 
 ## Performance
 
@@ -226,6 +228,9 @@ applications, including nonblocking IO.
 Contributions welcome.
 
 * Simple coro stack allocator, reusing stacks
+* More aggressive stack reclamation
+* Global/thread-local defaults (event loop, stack allocator)
+* Build option for default stack size
 * Libraries
   * TLS, HTTP, WebSocket
   * Actors
@@ -251,15 +256,10 @@ Contributions welcome.
 
 ### TODO
 
-* API polishing to better match Zig async
-* Concurrent execution helpers (xawaitAsReady, xawaitFirst, ...).
+* Concurrent execution helpers (e.g. xawaitAsReady)
 * Add support for cancellation and timeouts
 * Async iterators/streams
-* Better (typed) coroutine error propagation (CoroFunc)
-  * If a coroutine errors, it will be in the Done state and retval will be set
-    to the error. The caller in that situation will have to test whether the
-    coro is Done to call xreturned instead of xnext. The YieldT should probably
-    be augmented with the error type (if it exists) of the fn return type.
+* Channels (possibly replacing yield/inject)
 * HTTP client and server
 * Documentation, code comments, examples
 * Write up

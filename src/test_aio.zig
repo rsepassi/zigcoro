@@ -9,6 +9,8 @@ const AioTest = struct {
     allocator: std.mem.Allocator,
     tp: *xev.ThreadPool,
     loop: *xev.Loop,
+    fla: *libcoro.allocators.FixedSizeFreeListAllocator,
+    stacks: []u8,
 
     fn init() !@This() {
         const allocator = std.testing.allocator;
@@ -16,8 +18,13 @@ const AioTest = struct {
         // Allocate on heap for pointer stability
         var tp = try allocator.create(xev.ThreadPool);
         var loop = try allocator.create(xev.Loop);
+        var fla = try allocator.create(libcoro.allocators.FixedSizeFreeListAllocator);
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
+        const stack_size = 1024 * 64;
+        const num_stacks = 5;
+        const stacks = try allocator.alignedAlloc(u8, libcoro.stack_align, num_stacks * stack_size);
+        fla.* = try libcoro.allocators.FixedSizeFreeListAllocator.init(libcoro.stack_align, stacks, stack_size, allocator);
 
         // Thread-local env
         env = .{
@@ -25,10 +32,18 @@ const AioTest = struct {
             .loop = loop,
         };
 
+        aio.initEnv(.{
+            .loop = loop,
+            .stack_allocator = fla.allocator(),
+            .default_stack_size = stack_size,
+        });
+
         return .{
             .allocator = allocator,
             .tp = tp,
             .loop = loop,
+            .fla = fla,
+            .stacks = stacks,
         };
     }
 
@@ -36,8 +51,11 @@ const AioTest = struct {
         self.loop.deinit();
         self.tp.shutdown();
         self.tp.deinit();
+        self.fla.deinit();
         self.allocator.destroy(self.tp);
         self.allocator.destroy(self.loop);
+        self.allocator.destroy(self.fla);
+        self.allocator.free(self.stacks);
     }
 
     fn run(self: @This(), func: anytype) !void {
@@ -50,7 +68,7 @@ const AioTest = struct {
 test "aio sleep top-level" {
     const t = try AioTest.init();
     defer t.deinit();
-    try aio.sleep(t.loop, 100);
+    try aio.sleep(t.loop, 10);
 }
 
 fn sleep(ms: u64) !i64 {
@@ -58,7 +76,6 @@ fn sleep(ms: u64) !i64 {
     try std.testing.expect(libcoro.remainingStackSize() > 1024 * 2);
     return std.time.milliTimestamp();
 }
-const SleepFn = libcoro.CoroFunc(sleep, .{});
 
 test "aio sleep run" {
     const t = try AioTest.init();
@@ -70,10 +87,10 @@ test "aio sleep run" {
     );
     defer t.allocator.free(stack);
     const before = std.time.milliTimestamp();
-    const after = try aio.run(t.loop, sleep, .{500}, stack);
+    const after = try aio.run(t.loop, sleep, .{10}, stack);
 
-    try std.testing.expect(after > (before + 497));
-    try std.testing.expect(after < (before + 503));
+    try std.testing.expect(after > (before + 7));
+    try std.testing.expect(after < (before + 13));
 }
 
 fn sleepTask() !void {
@@ -82,23 +99,20 @@ fn sleepTask() !void {
         null,
     );
     defer env.allocator.free(stack);
-    var frame = SleepFn.init();
-    var coro = try frame.coro(.{250}, stack);
+    var sleep1 = try aio.xasync(sleep, .{10}, stack);
 
     const stack2 = try libcoro.stackAlloc(
         env.allocator,
         null,
     );
     defer env.allocator.free(stack2);
-    var frame2 = SleepFn.init();
-    var coro2 = try frame2.coro(.{500}, stack2);
+    var sleep2 = try aio.xasync(sleep, .{20}, stack2);
 
-    aio.xawait(.{ coro, coro2 });
+    const after = try aio.xawait(sleep1);
+    const after2 = try aio.xawait(sleep2);
 
-    const after = try SleepFn.xreturned(coro);
-    const after2 = try SleepFn.xreturned(coro2);
-    try std.testing.expect(after2 > (after + 247));
-    try std.testing.expect(after2 < (after + 253));
+    try std.testing.expect(after2 > (after + 7));
+    try std.testing.expect(after2 < (after + 13));
 }
 
 test "aio concurrent sleep" {
@@ -114,8 +128,8 @@ test "aio concurrent sleep" {
     try aio.run(t.loop, sleepTask, .{}, stack);
     const after = std.time.milliTimestamp();
 
-    try std.testing.expect(after > (before + 497));
-    try std.testing.expect(after < (before + 503));
+    try std.testing.expect(after > (before + 17));
+    try std.testing.expect(after < (before + 23));
 }
 
 const TickState = struct {
@@ -124,7 +138,7 @@ const TickState = struct {
 };
 
 fn tickLoop(tick: usize, state: *TickState) !void {
-    const amfast = tick == 50;
+    const amfast = tick == 10;
     for (0..10) |i| {
         try aio.sleep(env.loop, tick);
         if (amfast) {
@@ -137,7 +151,6 @@ fn tickLoop(tick: usize, state: *TickState) !void {
         }
     }
 }
-const TickLoopFn = libcoro.CoroFunc(tickLoop, .{});
 
 fn aioTimersMain() !void {
     const stack_size: usize = 1024 * 16;
@@ -145,22 +158,15 @@ fn aioTimersMain() !void {
     var tick_state = TickState{};
 
     // 2 parallel timer loops, one fast, one slow
-    var fn1 = TickLoopFn.init();
     const stack1 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack1);
-    var co1 = try fn1.coro(.{ 50, &tick_state }, stack1);
-
-    var fn2 = TickLoopFn.init();
+    const co1 = try aio.xasync(tickLoop, .{ 10, &tick_state }, stack1);
     const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack2);
-    var co2 = try fn2.coro(.{ 100, &tick_state }, stack2);
+    const co2 = try aio.xasync(tickLoop, .{ 20, &tick_state }, stack2);
 
-    aio.xawait(.{ co1, co2 });
-
-    try std.testing.expectEqual(co1.status, .Done);
-    try std.testing.expectEqual(co2.status, .Done);
-    try std.testing.expect(!std.meta.isError(TickLoopFn.xreturned(co1)));
-    try std.testing.expect(!std.meta.isError(TickLoopFn.xreturned(co2)));
+    try aio.xawait(co1);
+    try aio.xawait(co2);
 }
 
 test "aio timers" {
@@ -174,17 +180,16 @@ fn tcpMain() !void {
 
     var info: ServerInfo = .{};
 
-    var fn1 = libcoro.CoroFunc(tcpServer, .{}).init();
-    const stack1 = try libcoro.stackAlloc(env.allocator, stack_size);
-    defer env.allocator.free(stack1);
-    var server_co = try fn1.coro(.{&info}, stack1);
+    const sstack = try libcoro.stackAlloc(env.allocator, stack_size);
+    defer env.allocator.free(sstack);
+    var server = try aio.xasync(tcpServer, .{&info}, sstack);
 
-    var fn2 = libcoro.CoroFunc(tcpClient, .{}).init();
-    const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
-    defer env.allocator.free(stack2);
-    var client_co = try fn2.coro(.{&info}, stack2);
+    const cstack = try libcoro.stackAlloc(env.allocator, stack_size);
+    defer env.allocator.free(cstack);
+    var client = try aio.xasync(tcpClient, .{&info}, cstack);
 
-    aio.xawait(.{ server_co, client_co });
+    try aio.xawait(server);
+    try aio.xawait(client);
 }
 
 test "aio tcp" {
@@ -227,17 +232,16 @@ fn udpMain() !void {
     const stack_size = 1024 * 32;
     var info: ServerInfo = .{};
 
-    var fn1 = libcoro.CoroFunc(udpServer, .{}).init();
     const stack1 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack1);
-    var server_co = try fn1.coro(.{&info}, stack1);
+    var server_co = try aio.xasync(udpServer, .{&info}, stack1);
 
-    var fn2 = libcoro.CoroFunc(udpClient, .{}).init();
     const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack2);
-    var client_co = try fn2.coro(.{&info}, stack2);
+    var client_co = try aio.xasync(udpClient, .{&info}, stack2);
 
-    aio.xawait(.{ server_co, client_co });
+    try aio.xawait(server_co);
+    try aio.xawait(client_co);
 }
 
 test "aio udp" {
@@ -269,17 +273,16 @@ fn asyncMain() !void {
     const stack_size = 1024 * 32;
     var nstate = NotifierState{ .x = try xev.Async.init() };
 
-    var fn1 = libcoro.CoroFunc(asyncTest, .{}).init();
     const stack = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack);
-    var co = try fn1.coro(.{&nstate}, stack);
+    var co = try aio.xasync(asyncTest, .{&nstate}, stack);
 
-    var fn2 = libcoro.CoroFunc(asyncNotifier, .{}).init();
     const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack2);
-    var nco = try fn2.coro(.{&nstate}, stack2);
+    var nco = try aio.xasync(asyncNotifier, .{&nstate}, stack2);
 
-    aio.xawait(.{ co, nco });
+    try aio.xawait(co);
+    try aio.xawait(nco);
 }
 
 test "aio async" {
@@ -360,13 +363,49 @@ const NotifierState = struct {
 };
 
 fn asyncTest(state: *NotifierState) !void {
-    const notif = aio.Async.init(env.loop, state.x);
+    const notif = aio.AsyncNotification.init(env.loop, state.x);
     try notif.wait();
     state.notified = true;
 }
 
 fn asyncNotifier(state: *NotifierState) !void {
     try state.x.notify();
-    try aio.sleep(env.loop, 100);
+    try aio.sleep(env.loop, 10);
     try std.testing.expect(state.notified);
+}
+
+test "aio sleep env" {
+    const t = try AioTest.init();
+    defer t.deinit();
+
+    const before = std.time.milliTimestamp();
+    const after = try aio.run(null, sleep, .{10}, null);
+
+    try std.testing.expect(after > (before + 7));
+    try std.testing.expect(after < (before + 13));
+}
+
+fn sleepTaskEnv() !void {
+    var sleep1 = try aio.xasync(sleep, .{10}, null);
+    defer sleep1.deinit();
+    var sleep2 = try aio.xasync(sleep, .{20}, null);
+    defer sleep2.deinit();
+
+    const after = try aio.xawait(sleep1);
+    const after2 = try aio.xawait(sleep2);
+
+    try std.testing.expect(after2 > (after + 7));
+    try std.testing.expect(after2 < (after + 13));
+}
+
+test "aio concurrent sleep env" {
+    const t = try AioTest.init();
+    defer t.deinit();
+
+    const before = std.time.milliTimestamp();
+    try aio.run(null, sleepTaskEnv, .{}, null);
+    const after = std.time.milliTimestamp();
+
+    try std.testing.expect(after > (before + 17));
+    try std.testing.expect(after < (before + 23));
 }

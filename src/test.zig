@@ -55,7 +55,7 @@ fn coroInner(x: *usize) void {
     x.* += 3;
 }
 fn coroWrap() void {
-    const storage = libcoro.xcurrentStorage(Storage);
+    const storage = libcoro.xframe().?.getStorage(Storage);
     const x = storage.x;
     coroInner(x);
 }
@@ -92,8 +92,7 @@ test "with CoroFunc" {
     var x: usize = 0;
 
     const CoroFn = libcoro.CoroFunc(coroFnImpl, .{});
-    var frame = CoroFn.init();
-    var coro = try frame.coro(.{&x}, stack);
+    var coro = try CoroFn.init(.{&x}, stack);
 
     try std.testing.expectEqual(x, 0);
     libcoro.xresume(coro);
@@ -103,8 +102,28 @@ test "with CoroFunc" {
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 4);
     try std.testing.expectEqual(coro.status, .Done);
-    try std.testing.expectEqual(frame.retval, 14);
-    try std.testing.expectEqual(@TypeOf(frame).Signature.getReturnT(), usize);
+    try std.testing.expectEqual(CoroFn.xreturned(coro), 14);
+    comptime try std.testing.expectEqual(CoroFn.Signature.ReturnT, usize);
+}
+
+test "with FrameT and xasync xawait" {
+    const allocator = std.testing.allocator;
+    const stack = try libcoro.stackAlloc(allocator, null);
+    defer allocator.free(stack);
+
+    var x: usize = 0;
+
+    var frame = try libcoro.xasync(coroFnImpl, .{&x}, stack);
+
+    try std.testing.expectEqual(x, 1);
+    libcoro.xresume(frame);
+    try std.testing.expectEqual(x, 4);
+    libcoro.xresume(frame);
+    try std.testing.expectEqual(x, 4);
+    try std.testing.expectEqual(frame.status(), .Done);
+
+    const out = libcoro.xawait(frame);
+    try std.testing.expectEqual(out, 14);
 }
 
 fn coroError(x: *usize) !usize {
@@ -120,8 +139,8 @@ test "coro frame error" {
     defer allocator.free(stack);
 
     var x: usize = 0;
-    var frame = libcoro.CoroFunc(coroError, .{}).init();
-    var coro = try frame.coro(.{&x}, stack);
+    const Fn = libcoro.CoroFunc(coroError, .{});
+    var coro = try Fn.init(.{&x}, stack);
 
     try std.testing.expectEqual(x, 0);
     libcoro.xresume(coro);
@@ -129,7 +148,7 @@ test "coro frame error" {
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 1);
     try std.testing.expectEqual(coro.status, .Done);
-    try std.testing.expectEqual(frame.retval, error.SomethingBad);
+    try std.testing.expectEqual(Fn.xreturned(coro), error.SomethingBad);
 }
 
 fn iterFn(start: usize) bool {
@@ -148,8 +167,7 @@ test "iterator" {
     defer allocator.free(stack);
 
     var x: usize = 1;
-    var frame = Iter.init();
-    var coro = try frame.coro(.{x}, stack);
+    var coro = try Iter.init(.{x}, stack);
     var yielded: usize = undefined;
     yielded = Iter.xnextStart(coro); // first resume takes no value
     try std.testing.expectEqual(yielded, 1);
