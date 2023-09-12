@@ -181,7 +181,7 @@ test "iterator" {
     try std.testing.expectEqual(coro.status, .Done);
 }
 
-fn withSuspendBlock() usize {
+fn withSuspendBlock() void {
     const Data = struct {
         frame: libcoro.Frame,
     };
@@ -195,7 +195,6 @@ fn withSuspendBlock() usize {
     }).block_fn;
     var data = Data{ .frame = libcoro.xframe().? };
     libcoro.xsuspendBlock(block_fn, @ptrCast(&data));
-    return 7;
 }
 
 test "suspend block" {
