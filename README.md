@@ -44,6 +44,7 @@ xawait(FrameT)->T
 xframe()->Frame
 xresume(frame)
 xsuspend()
+xsuspendBlock(func, ptr)
 
 // Optional thread-local environment
 initEnv
@@ -128,6 +129,10 @@ var frame = @frame();
 // suspend
 xsuspend();
 suspend {}
+
+// suspend block
+xsuspendBlock(func, ptr);
+suspend { func(ptr); }
 
 // resume
 xresume(frame);

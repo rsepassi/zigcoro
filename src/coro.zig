@@ -6,6 +6,7 @@ const base = @import("coro_base.zig");
 // * ThreadState
 //   * current_coro: set in ThreadState.switchTo
 //   * next_coro_id: set in ThreadState.nextCoroId
+//   * suspend_block: set in xsuspendBlock, cleared in ThreadState.switchIn
 // * Coro
 //   * resumer: set in ThreadState.switchTo
 //   * status:
@@ -127,6 +128,10 @@ pub fn xresume(frame: anytype) void {
 // resumer. Returns when the coroutine is resumed.
 // Must be called from within a coroutine (i.e. not the top level).
 pub fn xsuspend() void {
+    xsuspendSafe() catch unreachable;
+}
+pub fn xsuspendBlock(func: *const fn (?*anyopaque) void, data: ?*anyopaque) void {
+    thread_state.suspend_block = .{ .func = func, .data = data };
     xsuspendSafe() catch unreachable;
 }
 pub fn xsuspendSafe() Error!void {
@@ -357,10 +362,19 @@ const ThreadState = struct {
     },
     current_coro: ?Frame = null,
     next_coro_id: usize = 1,
+    suspend_block: ?SuspendBlock = null,
 
     // Called from resume
     fn switchIn(self: *@This(), target: Frame) void {
+        // Switch to target, setting this coro as the resumer.
         self.switchTo(target, true);
+
+        // Suspend within target brings control back here
+        // If a suspend block has been set, pop and run it.
+        if (self.suspend_block) |block| {
+            self.suspend_block = null;
+            block.run();
+        }
     }
 
     // Called from suspend
@@ -389,6 +403,15 @@ const ThreadState = struct {
 
     fn current(self: *@This()) Frame {
         return self.current_coro orelse &self.root_coro;
+    }
+};
+
+const SuspendBlock = struct {
+    func: *const fn (?*anyopaque) void,
+    data: ?*anyopaque,
+
+    fn run(self: @This()) void {
+        @call(.auto, self.func, .{self.data});
     }
 };
 
