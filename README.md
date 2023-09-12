@@ -68,9 +68,9 @@ remainingStackSize()->usize
 ## Async IO API
 
 [`libcoro.asyncio`][aio] provides coroutine-based async IO functionality
-building upon the event loop from [`libxev`][libxev]. It provides
-coroutine-friendly wrappers to all the [high-level async APIs][libxev-watchers]
-in [`libxev`][libxev].
+building upon the event loop from [`libxev`][libxev],
+providing coroutine-friendly wrappers to all the [high-level
+async APIs][libxev-watchers].
 
 See [`test_aio.zig`][test-aio] for usage examples.
 
@@ -107,19 +107,18 @@ AsyncNotification
   wait
 ```
 
-The IO functions are run from within a coroutine and appear as blocking, but
-internally they suspend so that other coroutines can progress.
-
 ## Performance
 
-I've done some simple benchmarking on the cost of context switching and on
-pushing the number of coroutines. Further investigations on performance would
-be most welcome, as well as more realistic benchmarks.
+I've done some simple benchmarking on the cost of context
+switching and on pushing the number of coroutines. Further
+investigations on performance would be most welcome, as well
+as more realistic benchmarks.
 
 ## Context switching
 
-This benchmark measures the cost of a context switch from one coroutine to
-another by bouncing back and forth between 2 coroutines millions of times.
+This benchmark measures the cost of a context switch from
+one coroutine to another by bouncing back and forth between
+2 coroutines millions of times.
 
 From a run on an AMD Ryzen Threadripper PRO 5995WX:
 
@@ -143,13 +142,15 @@ ns/ctxswitch: 17
 
 ## Coroutine count
 
-This benchmark spawns a number of coroutines and iterates through them bouncing
-control back and forth, periodically logging the cost of context switching. As
-you increase the number of coroutines, you'll notice a cliff in performance or OOM.
-This will be highly dependent on the amount of free memory on the system.
+This benchmark spawns a number of coroutines and iterates
+through them bouncing control back and forth, periodically
+logging the cost of context switching. As you increase the
+number of coroutines, you'll notice a cliff in performance
+or OOM. This will be highly dependent on the amount of free
+memory on the system.
 
-Note also that zigcoro's default stack size is 4096B, which is the typical size of
-a single page on many systems.
+Note also that zigcoro's default stack size is 4096B, which
+is the typical size of a single page on many systems.
 
 From a run on an AMD Ryzen Threadripper PRO 5995WX:
 
