@@ -33,13 +33,7 @@ my_lib.addModule("libcoro", libcoro);
 
 Alpha, WIP.
 
-`zigcoro` already provides a decent async/await-like programming model. Use
-`asyncio.run` at the top-level to launch your main coroutine, and then within
-that, call any of the IO functions (that wrap `libxev`) directly, or create
-several coroutines and use `asyncio.xawait` to run them concurrently and
-await them.
-
-See [TODOs](#TODO) for active work.
+[TODOs](#TODO) list active work.
 
 ## Coroutine API
 
