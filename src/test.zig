@@ -189,11 +189,11 @@ fn withSuspendBlock() void {
         fn block_fn(ptr: ?*anyopaque) void {
             const data: *Data = @ptrCast(@alignCast(ptr.?));
             std.debug.assert(data.frame.status == .Suspended);
-            std.debug.assert(data.frame != libcoro.xframe().?);
+            std.debug.assert(data.frame != libcoro.xframe());
             libcoro.xresume(data.frame);
         }
     }).block_fn;
-    var data = Data{ .frame = libcoro.xframe().? };
+    var data = Data{ .frame = libcoro.xframe() };
     libcoro.xsuspendBlock(block_fn, @ptrCast(&data));
 }
 
