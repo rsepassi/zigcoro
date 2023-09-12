@@ -151,6 +151,21 @@ test "coro frame error" {
     try std.testing.expectEqual(Fn.xreturned(coro), error.SomethingBad);
 }
 
+test "xawait error" {
+    const allocator = std.testing.allocator;
+    const stack = try libcoro.stackAlloc(allocator, null);
+    defer allocator.free(stack);
+
+    var x: usize = 0;
+    const frame = try libcoro.xasync(coroError, .{&x}, stack);
+    try std.testing.expectEqual(x, 1);
+    libcoro.xresume(frame);
+    try std.testing.expectEqual(x, 1);
+    try std.testing.expectEqual(frame.status(), .Done);
+    const out = libcoro.xawait(frame);
+    try std.testing.expectError(error.SomethingBad, out);
+}
+
 fn iterFn(start: usize) bool {
     var val = start;
     var incr: usize = 0;
