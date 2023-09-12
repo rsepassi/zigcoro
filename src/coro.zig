@@ -6,6 +6,7 @@ const base = @import("coro_base.zig");
 // * ThreadState
 //   * current_coro: set in ThreadState.switchTo
 //   * next_coro_id: set in ThreadState.nextCoroId
+//   * suspend_block: set in xsuspendBlock, cleared in ThreadState.switchIn
 // * Coro
 //   * resumer: set in ThreadState.switchTo
 //   * status:
