@@ -75,9 +75,8 @@ async APIs][libxev-watchers].
 See [`test_aio.zig`][test-aio] for usage examples.
 
 ```
-// Run top-level coroutines in the event loop
+// Top-level coroutine execution
 run
-runCoro
 
 // Optional thread-local environment
 initEnv

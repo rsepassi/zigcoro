@@ -47,7 +47,7 @@ pub fn run(
 
 // Run a coroutine to completion.
 // Must be called from "root", outside of any created coroutine.
-pub fn runCoro(loop: ?*xev.Loop, frame: anytype) !void {
+fn runCoro(loop: ?*xev.Loop, frame: anytype) !void {
     const f = getFrame(frame);
     if (f.status == .Start) libcoro.xresume(f);
     while (f.status != .Done) try getLoop(loop).run(.once);
