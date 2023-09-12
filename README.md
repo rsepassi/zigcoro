@@ -52,7 +52,7 @@ initEnv
 Coro (Frame=*Coro)
   init(func, *stack, ?*storage)->Frame
   getStorage(T)->*T
-CoroFunc(func, opts)
+CoroT(func, opts)
   init(args, *stack)->Frame
   xnextStart(frame)->YieldT
   xnext(frame, inject)->YieldT

@@ -70,14 +70,14 @@ pub fn getFrame(co: anytype) Frame {
 
 pub fn xasync(func: anytype, args: anytype, stack: ?StackT) !FrameT(func) {
     const costack = try getStack(stack);
-    var frame = try CoroFunc(func, .{}).init(args, costack);
+    var frame = try CoroT(func, .{}).init(args, costack);
     xresume(frame);
     return FrameT(func){ .frame = frame, .owns_stack = stack == null };
 }
 
 pub fn FrameT(comptime Func: anytype) type {
     return struct {
-        const FrameTFunc = CoroFunc(Func, .{});
+        const FrameTFunc = CoroT(Func, .{});
         const T = FrameTFunc.Signature.ReturnT;
         frame: Frame,
         owns_stack: bool = false,
@@ -204,11 +204,11 @@ pub const CoroOptions = struct {
     InjectT: type = void,
 };
 
-pub fn CoroFunc(comptime Func: anytype, comptime options: CoroOptions) type {
-    return CoroFuncSig(CoroSignature.init(Func, options));
+pub fn CoroT(comptime Func: anytype, comptime options: CoroOptions) type {
+    return CoroTSig(CoroSignature.init(Func, options));
 }
 
-fn CoroFuncSig(comptime Sig: CoroSignature) type {
+fn CoroTSig(comptime Sig: CoroSignature) type {
     if (Sig.func_ptr == null) @compileError("Coro function must be comptime known");
     const ArgsT = ArgsTuple(Sig.Func);
 

@@ -84,14 +84,14 @@ fn coroFnImpl(x: *usize) usize {
     return x.* + 10;
 }
 
-test "with CoroFunc" {
+test "with CoroT" {
     const allocator = std.testing.allocator;
     const stack = try libcoro.stackAlloc(allocator, null);
     defer allocator.free(stack);
 
     var x: usize = 0;
 
-    const CoroFn = libcoro.CoroFunc(coroFnImpl, .{});
+    const CoroFn = libcoro.CoroT(coroFnImpl, .{});
     var coro = try CoroFn.init(.{&x}, stack);
 
     try std.testing.expectEqual(x, 0);
@@ -139,7 +139,7 @@ test "coro frame error" {
     defer allocator.free(stack);
 
     var x: usize = 0;
-    const Fn = libcoro.CoroFunc(coroError, .{});
+    const Fn = libcoro.CoroT(coroError, .{});
     var coro = try Fn.init(.{&x}, stack);
 
     try std.testing.expectEqual(x, 0);
@@ -159,7 +159,7 @@ fn iterFn(start: usize) bool {
     }
     return val == 28;
 }
-const Iter = libcoro.CoroFunc(iterFn, .{ .YieldT = usize, .InjectT = usize });
+const Iter = libcoro.CoroT(iterFn, .{ .YieldT = usize, .InjectT = usize });
 
 test "iterator" {
     const allocator = std.testing.allocator;
