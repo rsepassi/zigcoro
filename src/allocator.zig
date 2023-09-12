@@ -50,9 +50,9 @@ pub const FixedSizeFreeListAllocator = struct {
 
     fn alloc(ctx: *anyopaque, n: usize, log2_ptr_align: u8, ra: usize) ?[*]u8 {
         const self: *Self = @ptrCast(@alignCast(ctx));
-        _ = n;
         _ = ra;
         _ = log2_ptr_align;
+        if (n > self.stack_size) @panic("Request to FixedSizeFreeListAllocator exceeded provided stack size");
         const out = self.free_list.popFirst();
         if (out) |node| {
             return self.idxToBuf(node.data).ptr;
