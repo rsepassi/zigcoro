@@ -5,7 +5,6 @@ const libcoro = @import("coro.zig");
 pub const xasync = libcoro.xasync;
 pub const xawait = libcoro.xawait;
 
-const getFrame = libcoro.getFrame;
 const Frame = libcoro.Frame;
 
 const Env = struct {
@@ -48,7 +47,7 @@ pub fn run(
 // Run a coroutine to completion.
 // Must be called from "root", outside of any created coroutine.
 fn runCoro(loop: ?*xev.Loop, frame: anytype) !void {
-    const f = getFrame(frame);
+    const f = libcoro.getFrame(frame);
     if (f.status == .Start) libcoro.xresume(f);
     while (f.status != .Done) try getLoop(loop).run(.once);
 }
