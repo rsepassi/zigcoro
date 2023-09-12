@@ -10,7 +10,7 @@ fn set_idx(val: usize) void {
 }
 
 fn test_fn() void {
-    std.debug.assert(libcoro.remainingStackSize() > 1024);
+    std.debug.assert(libcoro.remainingStackSize() > 2048);
     set_idx(2);
     libcoro.xsuspend();
     set_idx(4);
@@ -21,7 +21,7 @@ fn test_fn() void {
 test "basic suspend and resume" {
     const allocator = std.testing.allocator;
 
-    const stack_size: usize = 1024 * 2;
+    const stack_size: usize = 1024 * 4;
     const stack = try libcoro.stackAlloc(allocator, stack_size);
     defer allocator.free(stack);
 
