@@ -106,6 +106,45 @@ AsyncNotification
   wait
 ```
 
+## Switching to Zig's async/await
+
+zigcoro has been designed to make it trivial to switch to Zig's async/await
+when it's ready. Below you'll find the zigcoro version along with the Zig
+async/await version for each of the core APIs.
+
+```zig
+// async
+var frame = try xasync(func, args, stack);
+var frame = async func(args);
+
+// await
+const res = xawait(frame);
+const res = await frame;
+
+// @frame
+var frame = xframe();
+var frame = @frame();
+
+// suspend
+xsuspend();
+suspend {}
+
+// resume
+xresume(frame);
+resume frame;
+
+// nosuspend
+run(loop, func, args, stack)
+nosuspend run(loop, func, args, null)
+
+// xev IO
+// No changes needed to the calls
+try sleep(loop, 10);
+```
+
+The above assumes the Zig async API that was available in [Zig
+0.10.1][zig-async].
+
 ## Performance
 
 I've done some simple benchmarking on the cost of context
@@ -239,8 +278,6 @@ Contributions welcome.
     * Dependency graphs
     * Detect incomplete coroutines
     * ASAN, TSAN, Valgrind support
-* Make it so that it's as easy as possible to switch to Zig's async when it's
-  ready
 * C API
 * Broader architecture support
   * risc-v
@@ -277,3 +314,4 @@ Contributions welcome.
 [aio]: https://github.com/rsepassi/zigcoro/blob/main/src/aio_xev.zig
 [test-aio]: https://github.com/rsepassi/zigcoro/blob/main/src/test_aio.zig
 [lua-coro]: https://www.lua.org/pil/9.1.html
+[zig-async]: https://ziglang.org/documentation/0.10.1/#Async-Functions
