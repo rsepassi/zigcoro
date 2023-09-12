@@ -103,9 +103,14 @@ pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
     return try allocator.alignedAlloc(u8, stack_align, size orelse default_stack_size);
 }
 
+// True if within a coroutine, false if at top-level.
+pub fn inCoro() bool {
+    return thread_state.current_coro != null;
+}
+
 // Returns the currently running coroutine
-pub fn xframe() ?Frame {
-    return thread_state.current_coro;
+pub fn xframe() Frame {
+    return thread_state.current_coro orelse &thread_state.root_coro;
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
@@ -325,7 +330,7 @@ pub noinline fn remainingStackSize() usize {
     const addr = @intFromPtr(&dummy);
 
     // Check if the stack was already overflowed
-    const current = xframe().?;
+    const current = xframe();
     checkStackOverflow(current) catch return 0;
 
     // Check if the stack is currently overflowed

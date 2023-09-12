@@ -55,7 +55,7 @@ fn coroInner(x: *usize) void {
     x.* += 3;
 }
 fn coroWrap() void {
-    const storage = libcoro.xframe().?.getStorage(Storage);
+    const storage = libcoro.xframe().getStorage(Storage);
     const x = storage.x;
     coroInner(x);
 }

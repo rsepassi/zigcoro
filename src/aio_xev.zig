@@ -68,12 +68,12 @@ pub fn sleep(loop: ?*xev.Loop, ms: u64) !void {
 }
 
 fn waitForCompletion(loop: ?*xev.Loop, c: *xev.Completion) !void {
-    if (libcoro.xframe() == null) {
-        // Not in a coroutine, blocking call
-        while (c.state() != .dead) try getLoop(loop).run(.once);
-    } else {
+    if (libcoro.inCoro()) {
         // In a coroutine; wait for it to be resumed
         libcoro.xsuspend();
+    } else {
+        // Not in a coroutine, blocking call
+        while (c.state() != .dead) try getLoop(loop).run(.once);
     }
 }
 
