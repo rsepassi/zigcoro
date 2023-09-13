@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const default_stack_size = b.option(usize, "libcoro_default_stack_size", "Default stack size for coroutines") orelse 1024 * 4;
+    const debug_log_level = b.option(usize, "libcoro_debug_log_level", "Debug log level for coroutines") orelse 0;
 
     // Deps
     const xev = b.dependency("libxev", .{}).module("xev");
@@ -12,6 +13,7 @@ pub fn build(b: *std.Build) !void {
     // Module
     const coro_options = b.addOptions();
     coro_options.addOption(usize, "default_stack_size", default_stack_size);
+    coro_options.addOption(usize, "debug_log_level", debug_log_level);
     const coro = b.addModule("libcoro", .{
         .source_file = .{ .path = "src/main.zig" },
         .dependencies = &[_]std.Build.ModuleDependency{

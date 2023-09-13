@@ -23,8 +23,8 @@ const AioTest = struct {
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         const stack_size = 1024 * 64;
         const num_stacks = 5;
-        const stacks = try allocator.alignedAlloc(u8, libcoro.stack_align, num_stacks * stack_size);
-        fla.* = try libcoro.allocators.FixedSizeFreeListAllocator.init(libcoro.stack_align, stacks, stack_size, allocator);
+        const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
+        fla.* = try libcoro.allocators.FixedSizeFreeListAllocator.init(libcoro.stack_alignment, stacks, stack_size, allocator);
 
         // Thread-local env
         env = .{

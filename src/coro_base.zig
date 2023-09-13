@@ -29,7 +29,7 @@ const arch_info: ArchInfo = switch (builtin.cpu.arch) {
     else => @compileError("Unsupported cpu architecture"),
 };
 
-pub const stack_align = 16;
+pub const stack_alignment = 16;
 
 extern fn libcoro_stack_swap(current: *Coro, target: *Coro) void;
 comptime {
@@ -45,7 +45,7 @@ pub const Coro = packed struct {
         self: *Coro,
     ) callconv(.C) noreturn;
 
-    pub fn init(func: Func, stack: []align(stack_align) u8) !Self {
+    pub fn init(func: Func, stack: []align(stack_alignment) u8) !Self {
         if (@sizeOf(usize) != 8) @compileError("usize expected to take 8 bytes");
         if (@sizeOf(*Func) != 8) @compileError("function pointer expected to take 8 bytes");
         const register_bytes = arch_info.num_registers * 8;

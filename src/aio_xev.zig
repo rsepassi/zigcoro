@@ -47,7 +47,7 @@ pub fn run(
 // Run a coroutine to completion.
 // Must be called from "root", outside of any created coroutine.
 fn runCoro(loop: ?*xev.Loop, frame: anytype) !void {
-    const f = libcoro.getFrame(frame);
+    const f = frame.frame();
     if (f.status == .Start) libcoro.xresume(f);
     while (f.status != .Done) try getLoop(loop).run(.once);
 }
@@ -549,8 +549,8 @@ pub const UDP = struct {
     }
 };
 
-fn RunT(comptime Func: anytype, comptime opts: libcoro.CoroOptions) type {
-    const T = libcoro.CoroSignature.init(Func, opts).ReturnT;
+fn RunT(comptime Func: anytype, comptime opts: libcoro.CoroT.Options) type {
+    const T = libcoro.CoroT.Signature.init(Func, opts).ReturnT();
     return switch (@typeInfo(T)) {
         .ErrorUnion => |E| E.payload,
         else => T,
