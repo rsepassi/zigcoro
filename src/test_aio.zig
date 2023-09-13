@@ -3,12 +3,13 @@ const libcoro = @import("libcoro");
 const xev = @import("xev");
 const aio = libcoro.asyncio;
 
-threadlocal var env: struct { allocator: std.mem.Allocator, loop: *xev.Loop } = undefined;
+threadlocal var env: struct { allocator: std.mem.Allocator, exec: *aio.Executor } = undefined;
 
 const AioTest = struct {
     allocator: std.mem.Allocator,
     tp: *xev.ThreadPool,
     loop: *xev.Loop,
+    exec: *aio.Executor,
     fla: *libcoro.allocators.FixedSizeFreeListAllocator,
     stacks: []u8,
 
@@ -18,10 +19,12 @@ const AioTest = struct {
         // Allocate on heap for pointer stability
         var tp = try allocator.create(xev.ThreadPool);
         var loop = try allocator.create(xev.Loop);
+        var exec = try allocator.create(aio.Executor);
         var fla = try allocator.create(libcoro.allocators.FixedSizeFreeListAllocator);
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
-        const stack_size = 1024 * 64;
+        exec.* = aio.Executor.init(loop);
+        const stack_size = 1024 * 128;
         const num_stacks = 5;
         const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
         fla.* = try libcoro.allocators.FixedSizeFreeListAllocator.init(libcoro.stack_alignment, stacks, stack_size, allocator);
@@ -29,11 +32,11 @@ const AioTest = struct {
         // Thread-local env
         env = .{
             .allocator = allocator,
-            .loop = loop,
+            .exec = exec,
         };
 
         aio.initEnv(.{
-            .loop = loop,
+            .executor = exec,
             .stack_allocator = fla.allocator(),
             .default_stack_size = stack_size,
         });
@@ -42,6 +45,7 @@ const AioTest = struct {
             .allocator = allocator,
             .tp = tp,
             .loop = loop,
+            .exec = exec,
             .fla = fla,
             .stacks = stacks,
         };
@@ -54,6 +58,7 @@ const AioTest = struct {
         self.fla.deinit();
         self.allocator.destroy(self.tp);
         self.allocator.destroy(self.loop);
+        self.allocator.destroy(self.exec);
         self.allocator.destroy(self.fla);
         self.allocator.free(self.stacks);
     }
@@ -61,18 +66,18 @@ const AioTest = struct {
     fn run(self: @This(), func: anytype) !void {
         const stack = try libcoro.stackAlloc(self.allocator, 1024 * 32);
         defer self.allocator.free(stack);
-        try aio.run(self.loop, func, .{}, stack);
+        try aio.run(self.exec, func, .{}, stack);
     }
 };
 
 test "aio sleep top-level" {
     const t = try AioTest.init();
     defer t.deinit();
-    try aio.sleep(t.loop, 10);
+    try aio.sleep(t.exec, 10);
 }
 
 fn sleep(ms: u64) !i64 {
-    try aio.sleep(env.loop, ms);
+    try aio.sleep(env.exec, ms);
     try std.testing.expect(libcoro.remainingStackSize() > 1024 * 2);
     return std.time.milliTimestamp();
 }
@@ -87,7 +92,7 @@ test "aio sleep run" {
     );
     defer t.allocator.free(stack);
     const before = std.time.milliTimestamp();
-    const after = try aio.run(t.loop, sleep, .{10}, stack);
+    const after = try aio.run(t.exec, sleep, .{10}, stack);
 
     try std.testing.expect(after > (before + 7));
     try std.testing.expect(after < (before + 13));
@@ -125,7 +130,7 @@ test "aio concurrent sleep" {
     );
     defer t.allocator.free(stack);
     const before = std.time.milliTimestamp();
-    try aio.run(t.loop, sleepTask, .{}, stack);
+    try aio.run(t.exec, sleepTask, .{}, stack);
     const after = std.time.milliTimestamp();
 
     try std.testing.expect(after > (before + 17));
@@ -140,7 +145,7 @@ const TickState = struct {
 fn tickLoop(tick: usize, state: *TickState) !void {
     const amfast = tick == 10;
     for (0..10) |i| {
-        try aio.sleep(env.loop, tick);
+        try aio.sleep(env.exec, tick);
         if (amfast) {
             state.fast += 1;
         } else {
@@ -180,13 +185,11 @@ fn tcpMain() !void {
 
     var info: ServerInfo = .{};
 
-    const sstack = try libcoro.stackAlloc(env.allocator, stack_size);
-    defer env.allocator.free(sstack);
-    var server = try aio.xasync(tcpServer, .{&info}, sstack);
+    var server = try aio.xasync(tcpServer, .{&info}, stack_size);
+    defer server.deinit();
 
-    const cstack = try libcoro.stackAlloc(env.allocator, stack_size);
-    defer env.allocator.free(cstack);
-    var client = try aio.xasync(tcpClient, .{&info}, cstack);
+    var client = try aio.xasync(tcpClient, .{&info}, stack_size);
+    defer client.deinit();
 
     try aio.xawait(server);
     try aio.xawait(client);
@@ -207,7 +210,7 @@ fn fileRW() !void {
     defer f.close();
     defer std.fs.cwd().deleteFile(path) catch {};
     const xfile = try xev.File.init(f);
-    const file = aio.File.init(env.loop, xfile);
+    const file = aio.File.init(env.exec, xfile);
     var write_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
     const write_len = try file.write(.{ .slice = &write_buf });
     try std.testing.expectEqual(write_len, write_buf.len);
@@ -215,7 +218,7 @@ fn fileRW() !void {
     const f2 = try std.fs.cwd().openFile(path, .{});
     defer f2.close();
     const xfile2 = try xev.File.init(f2);
-    const file2 = aio.File.init(env.loop, xfile2);
+    const file2 = aio.File.init(env.exec, xfile2);
     var read_buf: [128]u8 = undefined;
     const read_len = try file2.read(.{ .slice = &read_buf });
     try std.testing.expectEqual(write_len, read_len);
@@ -258,7 +261,7 @@ fn processTest() !void {
     var xp = try xev.Process.init(child.id);
     defer xp.deinit();
 
-    const p = aio.Process.init(env.loop, xp);
+    const p = aio.Process.init(env.exec, xp);
     const rc = try p.wait();
     try std.testing.expectEqual(rc, 0);
 }
@@ -306,7 +309,7 @@ fn tcpServer(info: *ServerInfo) !void {
     try std.os.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
-    const server = aio.TCP.init(env.loop, xserver);
+    const server = aio.TCP.init(env.exec, xserver);
     const conn = try server.accept();
     defer conn.close() catch unreachable;
     try server.close();
@@ -320,7 +323,7 @@ fn tcpServer(info: *ServerInfo) !void {
 fn tcpClient(info: *ServerInfo) !void {
     const address = info.addr;
     const xclient = try xev.TCP.init(address);
-    const client = aio.TCP.init(env.loop, xclient);
+    const client = aio.TCP.init(env.exec, xclient);
     defer client.close() catch unreachable;
     _ = try client.connect(address);
     var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
@@ -338,7 +341,7 @@ fn udpServer(info: *ServerInfo) !void {
     try std.os.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
-    const server = aio.UDP.init(env.loop, xserver);
+    const server = aio.UDP.init(env.exec, xserver);
 
     var recv_buf: [128]u8 = undefined;
     const recv_len = try server.read(.{ .slice = &recv_buf });
@@ -350,7 +353,7 @@ fn udpServer(info: *ServerInfo) !void {
 
 fn udpClient(info: *ServerInfo) !void {
     const xclient = try xev.UDP.init(info.addr);
-    const client = aio.UDP.init(env.loop, xclient);
+    const client = aio.UDP.init(env.exec, xclient);
     var send_buf = [_]u8{ 1, 1, 2, 3, 5, 8, 13 };
     const send_len = try client.write(info.addr, .{ .slice = &send_buf });
     try std.testing.expectEqual(send_len, 7);
@@ -363,14 +366,14 @@ const NotifierState = struct {
 };
 
 fn asyncTest(state: *NotifierState) !void {
-    const notif = aio.AsyncNotification.init(env.loop, state.x);
+    const notif = aio.AsyncNotification.init(env.exec, state.x);
     try notif.wait();
     state.notified = true;
 }
 
 fn asyncNotifier(state: *NotifierState) !void {
     try state.x.notify();
-    try aio.sleep(env.loop, 10);
+    try aio.sleep(env.exec, 10);
     try std.testing.expect(state.notified);
 }
 
@@ -408,4 +411,39 @@ test "aio concurrent sleep env" {
 
     try std.testing.expect(after > (before + 17));
     try std.testing.expect(after < (before + 23));
+}
+
+const UsizeChannel = libcoro.Channel(usize, .{ .capacity = 10 });
+
+fn sender(chan: *UsizeChannel, count: usize) !void {
+    defer chan.close();
+    for (0..count) |i| {
+        try chan.send(i);
+        try aio.sleep(null, 10);
+    }
+}
+
+fn recvr(chan: *UsizeChannel) usize {
+    var sum: usize = 0;
+    while (chan.recv()) |val| sum += val;
+    return sum;
+}
+
+fn chanMain() !usize {
+    var chan = UsizeChannel.init(null);
+    const send_frame = try libcoro.xasync(sender, .{ &chan, 6 }, null);
+    defer send_frame.deinit();
+    const recv_frame = try libcoro.xasync(recvr, .{&chan}, null);
+    defer recv_frame.deinit();
+
+    try libcoro.xawait(send_frame);
+    return libcoro.xawait(recv_frame);
+}
+
+test "aio mix channels" {
+    const t = try AioTest.init();
+    defer t.deinit();
+
+    const sum = try aio.run(null, chanMain, .{}, null);
+    try std.testing.expectEqual(sum, 15);
 }

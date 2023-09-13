@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const base = @import("coro_base.zig");
+const Executor = @import("executor.zig").Executor;
 const libcoro_options = @import("libcoro_options");
 
 const log = std.log.scoped(.libcoro);
@@ -34,10 +35,14 @@ pub const Frame = *Coro;
 pub const Env = struct {
     stack_allocator: ?std.mem.Allocator = null,
     default_stack_size: ?usize = null,
+    executor: ?*Executor = null,
 };
 threadlocal var env: Env = .{};
 pub fn initEnv(e: Env) void {
     env = e;
+}
+pub fn getEnv() *Env {
+    return &env;
 }
 
 const StackInfo = struct {
@@ -48,15 +53,19 @@ fn getStack(stack: anytype) !StackInfo {
     const T = @TypeOf(stack);
     const is_optional = @typeInfo(T) == .Optional;
     if (T == @TypeOf(null) or (is_optional and stack == null)) {
+        // Use env allocator with default stack size
         if (env.stack_allocator == null) @panic("No explicit stack passed and no default stack allocator available");
         return .{ .stack = try stackAlloc(env.stack_allocator.?, env.default_stack_size), .owned = true };
     } else if (T == comptime_int or T == usize) {
+        // Use env allocator with provided stack size
         const stack_size: usize = @intCast(stack);
         if (env.stack_allocator == null) @panic("No explicit stack passed and no default stack allocator available");
         return .{ .stack = try stackAlloc(env.stack_allocator.?, stack_size), .owned = true };
     } else if (is_optional) {
+        // Use provided stack
         return .{ .stack = stack.?, .owned = false };
     } else {
+        // Use provided stack
         return .{ .stack = stack, .owned = false };
     }
 }
@@ -66,27 +75,29 @@ fn getStack(stack: anytype) !StackInfo {
 pub fn xawait(frame: anytype) xawaitT(@TypeOf(frame)) {
     const f = frame.frame();
     while (f.status != .Done) xsuspend();
+    std.debug.assert(f.status == .Done);
     return frame.xreturned();
 }
 
 fn xawaitT(comptime T: type) type {
-    return if (T == Frame) void else T.Signature.ReturnT();
+    return T.Signature.ReturnT();
 }
 
 // Create a coroutine and start it
 // stack is {null, usize, StackT}. If null or usize, initEnv must have been
 // called with a default stack allocator.
-pub fn xasync(func: anytype, args: anytype, stack: anytype) !FrameT(func) {
+pub fn xasync(func: anytype, args: anytype, stack: anytype) !FrameT(func, .{ .ArgsT = @TypeOf(args) }) {
     const stack_info = try getStack(stack);
-    const framet = try CoroT.fromFunc(func, .{}).init(args, stack_info.stack, stack_info.owned);
+    const FrameType = CoroT.fromFunc(func, .{
+        .ArgsT = @TypeOf(args),
+    });
+    const framet = try FrameType.init(args, stack_info.stack, stack_info.owned);
     var frame = framet.frame();
     xresume(frame);
-    return FrameT(func).wrap(frame);
+    return FrameType.wrap(frame);
 }
 
-pub fn FrameT(comptime Func: anytype) type {
-    return CoroT.fromFunc(Func, .{});
-}
+pub const FrameT = CoroT.fromFunc;
 
 // Allocate a stack suitable for coroutine usage.
 // Caller is responsible for freeing memory.
@@ -96,12 +107,12 @@ pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
 
 // True if within a coroutine, false if at top-level.
 pub fn inCoro() bool {
-    return thread_state.current_coro != null;
+    return thread_state.inCoro();
 }
 
 // Returns the currently running coroutine
 pub fn xframe() Frame {
-    return thread_state.current_coro orelse &thread_state.root_coro;
+    return thread_state.current();
 }
 
 // Resume the passed coroutine, suspending the current coroutine.
@@ -151,6 +162,7 @@ const Coro = struct {
         Active,
         Done,
     };
+    const Signature = VoidSignature;
 
     // Function to run in the coroutine
     func: *const fn () void,
@@ -234,10 +246,15 @@ const Coro = struct {
     }
 };
 
+const VoidSignature = CoroT.Signature.init((struct {
+    fn func() void {}
+}).func, .{});
+
 const CoroT = struct {
     const Options = struct {
         YieldT: type = void,
         InjectT: type = void,
+        ArgsT: ?type = null,
     };
 
     // The signature of a coroutine.
@@ -248,6 +265,7 @@ const CoroT = struct {
         Func: type,
         YieldT: type = void,
         InjectT: type = void,
+        ArgsT: type,
 
         // If the function this signature represents is compile-time known,
         // it can be held here.
@@ -259,6 +277,7 @@ const CoroT = struct {
                 .Func = FuncT,
                 .YieldT = options.YieldT,
                 .InjectT = options.InjectT,
+                .ArgsT = options.ArgsT orelse ArgsTuple(FuncT),
                 .func_ptr = if (@TypeOf(Func) == type) null else struct {
                     const val = Func;
                 },
@@ -276,11 +295,10 @@ const CoroT = struct {
 
     fn fromSig(comptime Sig: Signature) type {
         if (Sig.func_ptr == null) @compileError("Coro function must be comptime known");
-        const ArgsT = ArgsTuple(Sig.Func);
 
         // Stored in the coro stack
         const InnerStorage = struct {
-            args: ArgsT,
+            args: Sig.ArgsT,
             // Values that are produced during coroutine execution
             value: union {
                 yieldval: Sig.YieldT,
@@ -299,7 +317,7 @@ const CoroT = struct {
             // self and stack pointers must remain stable for the lifetime of
             // the coroutine.
             fn init(
-                args: ArgsT,
+                args: Sig.ArgsT,
                 stack: StackT,
                 owns_stack: bool,
             ) !Self {
@@ -492,6 +510,10 @@ const ThreadState = struct {
 
     fn current(self: *@This()) Frame {
         return self.current_coro orelse &self.root_coro;
+    }
+
+    fn inCoro(self: *@This()) bool {
+        return self.current() != &self.root_coro;
     }
 
     // Returns the storage of the currently running coroutine
