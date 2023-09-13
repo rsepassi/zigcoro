@@ -130,8 +130,17 @@ pub fn xresume(frame: anytype) void {
 pub fn xsuspend() void {
     xsuspendSafe() catch unreachable;
 }
-pub fn xsuspendBlock(func: *const fn (?*anyopaque) void, data: ?*anyopaque) void {
-    thread_state.suspend_block = .{ .func = func, .data = data };
+pub fn xsuspendBlock(func: anytype, args: anytype) void {
+    const Callback = struct {
+        func: *const @TypeOf(func),
+        args: ArgsTuple(@TypeOf(func)),
+        fn cb(ud: ?*anyopaque) void {
+            const self: *@This() = @ptrCast(@alignCast(ud));
+            @call(.auto, self.func, self.args);
+        }
+    };
+    var cb = Callback{ .func = func, .args = args };
+    thread_state.suspend_block = .{ .func = Callback.cb, .data = @ptrCast(&cb) };
     xsuspendSafe() catch unreachable;
 }
 pub fn xsuspendSafe() Error!void {

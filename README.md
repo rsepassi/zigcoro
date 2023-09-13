@@ -131,8 +131,8 @@ xsuspend();
 suspend {}
 
 // suspend block
-xsuspendBlock(func, ptr);
-suspend { func(ptr); }
+xsuspendBlock(func, args);
+suspend { func(args); }
 
 // resume
 xresume(frame);

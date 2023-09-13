@@ -199,17 +199,14 @@ test "iterator" {
 fn withSuspendBlock() void {
     const Data = struct {
         frame: libcoro.Frame,
-    };
-    const block_fn = (struct {
-        fn block_fn(ptr: ?*anyopaque) void {
-            const data: *Data = @ptrCast(@alignCast(ptr.?));
+        fn block_fn(data: *@This()) void {
             std.debug.assert(data.frame.status == .Suspended);
             std.debug.assert(data.frame != libcoro.xframe());
             libcoro.xresume(data.frame);
         }
-    }).block_fn;
+    };
     var data = Data{ .frame = libcoro.xframe() };
-    libcoro.xsuspendBlock(block_fn, @ptrCast(&data));
+    libcoro.xsuspendBlock(Data.block_fn, .{&data});
 }
 
 test "suspend block" {
