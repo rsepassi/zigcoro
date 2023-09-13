@@ -217,3 +217,38 @@ test "suspend block" {
     const frame = try libcoro.xasync(withSuspendBlock, .{}, stack);
     try std.testing.expectEqual(frame.status(), .Done);
 }
+
+const UsizeChannel = libcoro.Channel(usize, .{});
+
+fn sender(chan: *UsizeChannel) void {
+    std.debug.print("sender {any}\n", .{libcoro.xframe().id});
+    defer chan.close();
+    for (0..3) |i| chan.send(i);
+}
+
+fn recvr(chan: *UsizeChannel) usize {
+    std.debug.print("recvr {any}\n", .{libcoro.xframe().id});
+    var sum: usize = 0;
+    while (chan.recv()) |val| sum += val;
+    return sum;
+}
+
+// test "channel" {
+//     libcoro.initEnv(.{ .stack_allocator = std.testing.allocator });
+//     var exec = libcoro.Executor.init();
+//     var chan = UsizeChannel.init(&exec);
+//     const send_frame = try libcoro.xasync(sender, .{&chan}, 1024 * 32);
+//     defer send_frame.deinit();
+//     const recv_frame = try libcoro.xasync(recvr, .{&chan}, 1024 * 32);
+//     defer recv_frame.deinit();
+//
+//     var count: usize = 0;
+//     while (exec.tick()) : (count += 1) {
+//         if (count > 10) @panic("Overrun");
+//     }
+//     //if (true) @panic("after");
+//
+//     libcoro.xawait(send_frame);
+//     const sum = libcoro.xawait(recv_frame);
+//     try std.testing.expectEqual(sum, 1);
+// }
