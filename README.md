@@ -29,11 +29,15 @@ my_lib.addModule("libcoro", libcoro);
 
 ## Current status
 
-*Updated 2023/09/08*
+*Updated 2023/09/15*
 
-Alpha, WIP.
+Alpha.
 
-[TODOs](#TODO) list active work.
+Async/await, suspend/resume, and async IO are all functional and (CI) tested.
+
+Currently working on: Channels.
+
+See [future work](#future-work) for more.
 
 ## Coroutine API
 
@@ -265,10 +269,14 @@ applications, including nonblocking IO.
 
 Contributions welcome.
 
-* Simple coro stack allocator, reusing stacks
+* Documentation, code comments, examples
+* Write up (rsepassi@)
+* Channels (possibly replacing yield/inject)
+* Async iterators/streams
+* Concurrent execution helpers (e.g. xawaitAsReady)
+* Add support for cancellation and timeouts
+* Buddy allocator for reusable stacks
 * More aggressive stack reclamation
-* Global/thread-local defaults (event loop, stack allocator)
-* Build option for default stack size
 * Libraries
   * TLS, HTTP, WebSocket
   * Actors
@@ -289,16 +297,6 @@ Contributions welcome.
   * 32-bit
   * WASM (Asyncify?)
   * comptime?
-
-### TODO
-
-* Concurrent execution helpers (e.g. xawaitAsReady)
-* Add support for cancellation and timeouts
-* Async iterators/streams
-* Channels (possibly replacing yield/inject)
-* HTTP client and server
-* Documentation, code comments, examples
-* Write up
 
 ## Inspirations
 
