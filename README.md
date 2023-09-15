@@ -54,7 +54,8 @@ xsuspendBlock(func, ptr)
 initEnv
 
 // Low-level API
-Coro (Frame=*Coro)
+// Note: Frame = *Coro
+Coro
   init(func, *stack, ?*storage)->Frame
   getStorage(T)->*T
 CoroT(func, opts)
@@ -113,9 +114,9 @@ AsyncNotification
 
 ## Switching to Zig's async/await
 
-zigcoro has been designed to make it trivial to switch to Zig's async/await
-when it's ready. Below you'll find the zigcoro version along with the Zig
-async/await version for each of the core APIs.
+It's trivial to switch to Zig's async/await whenever it's ready.
+
+Translation (zigcoro then Zig):
 
 ```zig
 // async
@@ -143,16 +144,16 @@ xresume(frame);
 resume frame;
 
 // nosuspend
-run(loop, func, args, stack)
-nosuspend run(loop, func, args, null)
+asyncio.run(loop, func, args, stack)
+nosuspend asyncio.run(loop, func, args, null)
 
 // xev IO
 // No changes needed to the calls
-try sleep(loop, 10);
+try asyncio.sleep(loop, 10);
 ```
 
 The above assumes the Zig async API that was available in [Zig
-0.10.1][zig-async].
+0.10.1][zig-async], which I expect (but do not know) to be similar in 0.12.0.
 
 ## Performance
 
