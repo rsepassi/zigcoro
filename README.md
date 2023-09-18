@@ -58,6 +58,7 @@ initEnv
 Coro
   getStorage(T)->*T
 CoroT(func, opts)
+  frame()->Frame
   xnextStart(frame)->YieldT
   xnext(frame, inject)->YieldT
   xnextEnd(frame, inject)->ReturnT
