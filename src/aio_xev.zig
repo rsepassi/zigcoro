@@ -37,7 +37,7 @@ pub fn run(
     func: anytype,
     args: anytype,
     stack: ?libcoro.StackT,
-) !RunT(func, .{}) {
+) !RunT(func) {
     const frame = try xasync(func, args, stack);
     defer frame.deinit();
     try runCoro(loop, frame);
@@ -549,8 +549,8 @@ pub const UDP = struct {
     }
 };
 
-fn RunT(comptime Func: anytype, comptime opts: libcoro.CoroT.Options) type {
-    const T = libcoro.CoroT.Signature.init(Func, opts).ReturnT();
+fn RunT(comptime Func: anytype) type {
+    const T = @typeInfo(@TypeOf(Func)).Fn.return_type.?;
     return switch (@typeInfo(T)) {
         .ErrorUnion => |E| E.payload,
         else => T,

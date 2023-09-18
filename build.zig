@@ -14,11 +14,12 @@ pub fn build(b: *std.Build) !void {
     const coro_options = b.addOptions();
     coro_options.addOption(usize, "default_stack_size", default_stack_size);
     coro_options.addOption(usize, "debug_log_level", debug_log_level);
+    const coro_options_module = coro_options.createModule();
     const coro = b.addModule("libcoro", .{
         .source_file = .{ .path = "src/main.zig" },
         .dependencies = &[_]std.Build.ModuleDependency{
             .{ .name = "xev", .module = xev },
-            .{ .name = "libcoro_options", .module = coro_options.createModule() },
+            .{ .name = "libcoro_options", .module = coro_options_module },
         },
     });
 
@@ -30,7 +31,6 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         });
         coro_test.addModule("libcoro", coro);
-        coro_test.addModule("xev", xev);
         coro_test.linkLibC();
 
         const internal_test = b.addTest(.{
@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        coro_test.addModule("xev", xev);
+        internal_test.addModule("libcoro_options", coro_options_module);
         coro_test.linkLibC();
 
         // Test step

@@ -54,12 +54,10 @@ xsuspendBlock(func, ptr)
 initEnv
 
 // Low-level API
-// Note: Frame = *Coro
+// Note: Frame = *Coro, FrameT = CoroT
 Coro
-  init(func, *stack, ?*storage)->Frame
   getStorage(T)->*T
 CoroT(func, opts)
-  init(args, *stack)->Frame
   xnextStart(frame)->YieldT
   xnext(frame, inject)->YieldT
   xnextEnd(frame, inject)->ReturnT

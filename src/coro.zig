@@ -143,9 +143,9 @@ pub fn xsuspendSafe() Error!void {
     thread_state.switchOut(coro.resumer);
 }
 
-pub const Coro = struct {
+const Coro = struct {
     // Coroutine status
-    pub const Status = enum {
+    const Status = enum {
         Start,
         Suspended,
         Active,
@@ -169,7 +169,7 @@ pub const Coro = struct {
     // Caller-specified coro-local storage
     storage: ?*anyopaque = null,
 
-    pub fn init(func: *const fn () void, stack: StackT, owns_stack: bool, storage: ?*anyopaque) !Frame {
+    fn init(func: *const fn () void, stack: StackT, owns_stack: bool, storage: ?*anyopaque) !Frame {
         var s = Stack.init(stack);
         return initFromStack(func, &s, owns_stack, storage);
     }
@@ -234,8 +234,8 @@ pub const Coro = struct {
     }
 };
 
-pub const CoroT = struct {
-    pub const Options = struct {
+const CoroT = struct {
+    const Options = struct {
         YieldT: type = void,
         InjectT: type = void,
     };
@@ -244,7 +244,7 @@ pub const CoroT = struct {
     // Considering a coroutine a generalization of a regular function,
     // it has the typical input arguments and outputs (Func) and also
     // the types of its yielded (YieldT) and injected (InjectT) values.
-    pub const Signature = struct {
+    const Signature = struct {
         Func: type,
         YieldT: type = void,
         InjectT: type = void,
@@ -253,7 +253,7 @@ pub const CoroT = struct {
         // it can be held here.
         func_ptr: ?type = null,
 
-        pub fn init(comptime Func: anytype, comptime options: CoroT.Options) @This() {
+        fn init(comptime Func: anytype, comptime options: CoroT.Options) @This() {
             const FuncT = if (@TypeOf(Func) == type) Func else @TypeOf(Func);
             return .{
                 .Func = FuncT,
@@ -270,11 +270,11 @@ pub const CoroT = struct {
         }
     };
 
-    pub fn fromFunc(comptime Func: anytype, comptime options: Options) type {
+    fn fromFunc(comptime Func: anytype, comptime options: Options) type {
         return fromSig(Signature.init(Func, options));
     }
 
-    pub fn fromSig(comptime Sig: Signature) type {
+    fn fromSig(comptime Sig: Signature) type {
         if (Sig.func_ptr == null) @compileError("Coro function must be comptime known");
         const ArgsT = ArgsTuple(Sig.Func);
 
@@ -298,7 +298,7 @@ pub const CoroT = struct {
             // Create a Coro
             // self and stack pointers must remain stable for the lifetime of
             // the coroutine.
-            pub fn init(
+            fn init(
                 args: ArgsT,
                 stack: StackT,
                 owns_stack: bool,
@@ -602,4 +602,140 @@ const StackOverflow = struct {
 
 test {
     std.testing.refAllDecls(@import("allocator.zig"));
+}
+
+var test_idx: usize = 0;
+var test_steps = [_]usize{0} ** 8;
+
+fn testSetIdx(val: usize) void {
+    test_steps[test_idx] = val;
+    test_idx += 1;
+}
+
+fn testFn() void {
+    std.debug.assert(remainingStackSize() > 2048);
+    testSetIdx(2);
+    xsuspend();
+    testSetIdx(4);
+    xsuspend();
+    testSetIdx(6);
+}
+
+test "basic suspend and resume" {
+    const allocator = std.testing.allocator;
+
+    const stack_size: usize = 1024 * 4;
+    const stack = try stackAlloc(allocator, stack_size);
+    defer allocator.free(stack);
+
+    testSetIdx(0);
+    var test_coro = try Coro.init(testFn, stack, false, null);
+
+    testSetIdx(1);
+    try std.testing.expectEqual(test_coro.status, .Start);
+    xresume(test_coro);
+    testSetIdx(3);
+    try std.testing.expectEqual(test_coro.status, .Suspended);
+    xresume(test_coro);
+    try std.testing.expectEqual(test_coro.status, .Suspended);
+    testSetIdx(5);
+    xresume(test_coro);
+    testSetIdx(7);
+
+    try std.testing.expectEqual(test_coro.status, .Done);
+
+    for (0..test_steps.len) |i| {
+        try std.testing.expectEqual(i, test_steps[i]);
+    }
+}
+
+test "with values" {
+    const Test = struct {
+        const Storage = struct {
+            x: *usize,
+        };
+        fn coroInner(x: *usize) void {
+            x.* += 1;
+            xsuspend();
+            x.* += 3;
+        }
+        fn coroWrap() void {
+            const storage = xframe().getStorage(Storage);
+            const x = storage.x;
+            coroInner(x);
+        }
+    };
+    var x: usize = 0;
+    var storage = Test.Storage{ .x = &x };
+
+    const allocator = std.testing.allocator;
+    const stack = try stackAlloc(allocator, null);
+    defer allocator.free(stack);
+    var coro = try Coro.init(Test.coroWrap, stack, false, @ptrCast(&storage));
+
+    try std.testing.expectEqual(storage.x.*, 0);
+    xresume(coro);
+    try std.testing.expectEqual(storage.x.*, 1);
+    xresume(coro);
+    try std.testing.expectEqual(storage.x.*, 4);
+}
+
+fn testCoroFnImpl(x: *usize) usize {
+    x.* += 1;
+    xsuspend();
+    x.* += 3;
+    xsuspend();
+    return x.* + 10;
+}
+
+test "with CoroT" {
+    const allocator = std.testing.allocator;
+    const stack = try stackAlloc(allocator, null);
+    defer allocator.free(stack);
+
+    var x: usize = 0;
+
+    const CoroFn = CoroT.fromFunc(testCoroFnImpl, .{});
+    var coro = try CoroFn.init(.{&x}, stack, false);
+
+    try std.testing.expectEqual(x, 0);
+    xresume(coro);
+    try std.testing.expectEqual(x, 1);
+    xresume(coro);
+    try std.testing.expectEqual(x, 4);
+    xresume(coro);
+    try std.testing.expectEqual(x, 4);
+    try std.testing.expectEqual(coro.status(), .Done);
+    try std.testing.expectEqual(CoroFn.xreturned(coro), 14);
+    comptime try std.testing.expectEqual(CoroFn.Signature.ReturnT(), usize);
+}
+
+fn iterFn(start: usize) bool {
+    var val = start;
+    var incr: usize = 0;
+    while (val < 10) : (val += incr) {
+        incr = Iter.xyield(val);
+    }
+    return val == 28;
+}
+const Iter = CoroT.fromFunc(iterFn, .{ .YieldT = usize, .InjectT = usize });
+
+test "iterator" {
+    const allocator = std.testing.allocator;
+    const stack = try stackAlloc(allocator, null);
+    defer allocator.free(stack);
+
+    var x: usize = 1;
+    var coro = try Iter.init(.{x}, stack, false);
+    var yielded: usize = undefined;
+    yielded = Iter.xnextStart(coro); // first resume takes no value
+    try std.testing.expectEqual(yielded, 1);
+    yielded = Iter.xnext(coro, 3);
+    try std.testing.expectEqual(yielded, 4);
+    yielded = Iter.xnext(coro, 2);
+    try std.testing.expectEqual(yielded, 6);
+    const retval = Iter.xnextEnd(coro, 22);
+    try std.testing.expect(retval);
+
+    try std.testing.expectEqual(coro.status(), .Done);
 }
