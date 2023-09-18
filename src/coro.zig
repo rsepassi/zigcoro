@@ -473,6 +473,7 @@ const ThreadState = struct {
 
     fn switchTo(self: *@This(), target: Frame, set_resumer: bool) void {
         const suspender = self.current();
+        if (suspender == target) return;
         if (suspender.status != .Done) suspender.status = .Suspended;
         if (set_resumer) target.resumer = suspender;
         target.status = .Active;
@@ -738,4 +739,9 @@ test "iterator" {
     try std.testing.expect(retval);
 
     try std.testing.expectEqual(coro.status(), .Done);
+}
+
+test "resume self" {
+    xresume(xframe());
+    try std.testing.expectEqual(1, 1);
 }
