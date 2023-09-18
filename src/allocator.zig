@@ -11,8 +11,8 @@ pub const FixedSizeFreeListAllocator = struct {
     bookkeeping_allocator: std.mem.Allocator,
 
     pub fn init(
-        comptime stack_align: usize,
-        buffer: []align(stack_align) u8,
+        comptime stack_alignment: usize,
+        buffer: []align(stack_alignment) u8,
         stack_size: usize,
         bookkeeping_allocator: std.mem.Allocator,
     ) !Self {
@@ -105,28 +105,28 @@ pub const FixedSizeFreeListAllocator = struct {
 
 test "alloc" {
     const allocator = std.testing.allocator;
-    const stack_align = 16;
-    const block = try allocator.alignedAlloc(u8, stack_align, 2048);
+    const stack_alignment = 16;
+    const block = try allocator.alignedAlloc(u8, stack_alignment, 2048);
     defer allocator.free(block);
     const stack_size = 32;
 
-    var fla = try FixedSizeFreeListAllocator.init(stack_align, block, stack_size, allocator);
+    var fla = try FixedSizeFreeListAllocator.init(stack_alignment, block, stack_size, allocator);
     defer fla.deinit();
 
     const salloc = fla.allocator();
 
-    const buf = try salloc.alignedAlloc(u8, stack_align, stack_size);
-    comptime std.debug.assert(@TypeOf(buf) == []align(stack_align) u8);
+    const buf = try salloc.alignedAlloc(u8, stack_alignment, stack_size);
+    comptime std.debug.assert(@TypeOf(buf) == []align(stack_alignment) u8);
     try std.testing.expectEqual(buf.len, stack_size);
 
-    var last: []align(stack_align) u8 = undefined;
+    var last: []align(stack_alignment) u8 = undefined;
     for (0..63) |_| {
-        last = try salloc.alignedAlloc(u8, stack_align, stack_size);
+        last = try salloc.alignedAlloc(u8, stack_alignment, stack_size);
     }
 
-    try std.testing.expectError(error.OutOfMemory, salloc.alignedAlloc(u8, stack_align, stack_size));
+    try std.testing.expectError(error.OutOfMemory, salloc.alignedAlloc(u8, stack_alignment, stack_size));
 
     salloc.free(last);
 
-    _ = try salloc.alignedAlloc(u8, stack_align, stack_size);
+    _ = try salloc.alignedAlloc(u8, stack_alignment, stack_size);
 }

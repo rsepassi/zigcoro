@@ -26,7 +26,7 @@ test "basic suspend and resume" {
     defer allocator.free(stack);
 
     set_idx(0);
-    var test_coro = try libcoro.Coro.init(test_fn, stack, null);
+    var test_coro = try libcoro.Coro.init(test_fn, stack, false, null);
 
     set_idx(1);
     try std.testing.expectEqual(test_coro.status, .Start);
@@ -67,7 +67,7 @@ test "with values" {
     const allocator = std.testing.allocator;
     const stack = try libcoro.stackAlloc(allocator, null);
     defer allocator.free(stack);
-    var coro = try libcoro.Coro.init(coroWrap, stack, @ptrCast(&storage));
+    var coro = try libcoro.Coro.init(coroWrap, stack, false, @ptrCast(&storage));
 
     try std.testing.expectEqual(storage.x.*, 0);
     libcoro.xresume(coro);
@@ -91,8 +91,8 @@ test "with CoroT" {
 
     var x: usize = 0;
 
-    const CoroFn = libcoro.CoroT(coroFnImpl, .{});
-    var coro = try CoroFn.init(.{&x}, stack);
+    const CoroFn = libcoro.CoroT.fromFunc(coroFnImpl, .{});
+    var coro = try CoroFn.init(.{&x}, stack, false);
 
     try std.testing.expectEqual(x, 0);
     libcoro.xresume(coro);
@@ -101,9 +101,9 @@ test "with CoroT" {
     try std.testing.expectEqual(x, 4);
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 4);
-    try std.testing.expectEqual(coro.status, .Done);
+    try std.testing.expectEqual(coro.status(), .Done);
     try std.testing.expectEqual(CoroFn.xreturned(coro), 14);
-    comptime try std.testing.expectEqual(CoroFn.Signature.ReturnT, usize);
+    comptime try std.testing.expectEqual(CoroFn.Signature.ReturnT(), usize);
 }
 
 test "with FrameT and xasync xawait" {
@@ -139,15 +139,15 @@ test "coro frame error" {
     defer allocator.free(stack);
 
     var x: usize = 0;
-    const Fn = libcoro.CoroT(coroError, .{});
-    var coro = try Fn.init(.{&x}, stack);
+    const Fn = libcoro.CoroT.fromFunc(coroError, .{});
+    var coro = try Fn.init(.{&x}, stack, false);
 
     try std.testing.expectEqual(x, 0);
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 1);
     libcoro.xresume(coro);
     try std.testing.expectEqual(x, 1);
-    try std.testing.expectEqual(coro.status, .Done);
+    try std.testing.expectEqual(coro.status(), .Done);
     try std.testing.expectEqual(Fn.xreturned(coro), error.SomethingBad);
 }
 
@@ -174,7 +174,7 @@ fn iterFn(start: usize) bool {
     }
     return val == 28;
 }
-const Iter = libcoro.CoroT(iterFn, .{ .YieldT = usize, .InjectT = usize });
+const Iter = libcoro.CoroT.fromFunc(iterFn, .{ .YieldT = usize, .InjectT = usize });
 
 test "iterator" {
     const allocator = std.testing.allocator;
@@ -182,7 +182,7 @@ test "iterator" {
     defer allocator.free(stack);
 
     var x: usize = 1;
-    var coro = try Iter.init(.{x}, stack);
+    var coro = try Iter.init(.{x}, stack, false);
     var yielded: usize = undefined;
     yielded = Iter.xnextStart(coro); // first resume takes no value
     try std.testing.expectEqual(yielded, 1);
@@ -193,7 +193,7 @@ test "iterator" {
     const retval = Iter.xnextEnd(coro, 22);
     try std.testing.expect(retval);
 
-    try std.testing.expectEqual(coro.status, .Done);
+    try std.testing.expectEqual(coro.status(), .Done);
 }
 
 fn withSuspendBlock() void {

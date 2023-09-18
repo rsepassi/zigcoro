@@ -20,13 +20,13 @@ fn contextSwitchBm() !void {
     // context switch benchmark
     {
         const stack_size: usize = 1024 * 4;
-        const stack = try allocator.alignedAlloc(u8, libcoro.stack_align, stack_size);
+        const stack = try allocator.alignedAlloc(u8, libcoro.stack_alignment, stack_size);
         defer allocator.free(stack);
 
         // warmup
         num_bounces = 100_000;
         {
-            var test_coro = try libcoro.Coro.init(testFn, stack, null);
+            var test_coro = try libcoro.Coro.init(testFn, stack, false, null);
             for (0..num_bounces) |_| {
                 libcoro.xresume(test_coro);
             }
@@ -35,7 +35,7 @@ fn contextSwitchBm() !void {
 
         num_bounces = 20_000_000;
         {
-            var test_coro = try libcoro.Coro.init(testFn, stack, null);
+            var test_coro = try libcoro.Coro.init(testFn, stack, false, null);
 
             const start = std.time.nanoTimestamp();
             for (0..num_bounces) |_| {
@@ -122,7 +122,7 @@ fn ncorosBm(num_coros: usize) !void {
 
     for (0..num_coros) |i| {
         var stack = try libcoro.stackAlloc(alloc2, null);
-        const coro = try libcoro.Coro.init(suspendRepeat, stack, null);
+        const coro = try libcoro.Coro.init(suspendRepeat, stack, false, null);
         coros[i] = coro;
     }
 
