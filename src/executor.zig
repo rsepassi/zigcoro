@@ -75,38 +75,22 @@ pub fn Channel(comptime T: type, comptime config: ChannelConfig) type {
 
         pub fn close(self: *Self) void {
             self.closed = true;
-            self.notifyValue();
+            self.value_notif.signal();
         }
 
         pub fn send(self: *Self, val: T) !void {
             if (self.closed) @panic("Cannot send on closed Channel");
-            while (self.q.space() == 0) self.waitForSpace();
+            while (self.q.space() == 0) self.space_notif.wait();
             try self.q.push(val);
-            self.notifyValue();
+            self.value_notif.signal();
         }
 
         pub fn recv(self: *Self) ?T {
-            while (!(self.closed or self.q.len() != 0)) self.waitForValue();
+            while (!(self.closed or self.q.len() != 0)) self.value_notif.wait();
             if (self.closed and self.q.len() == 0) return null;
             const out = self.q.pop().?;
-            self.notifySpace();
-            return out;
-        }
-
-        fn waitForSpace(self: *Self) void {
-            self.space_notif.wait();
-        }
-
-        fn waitForValue(self: *Self) void {
-            self.value_notif.wait();
-        }
-
-        fn notifySpace(self: *Self) void {
             self.space_notif.signal();
-        }
-
-        fn notifyValue(self: *Self) void {
-            self.value_notif.signal();
+            return out;
         }
     };
 }
