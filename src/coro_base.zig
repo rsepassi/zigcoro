@@ -12,18 +12,18 @@ const arch_info: ArchInfo = switch (builtin.cpu.arch) {
     .aarch64 => .{
         .num_registers = 20,
         .jump_idx = 19,
-        .assembly = @embedFile("coro_aarch64.s"),
+        .assembly = @embedFile("asm/coro_aarch64.s"),
     },
     .x86_64 => switch (builtin.os.tag) {
         .windows => .{
             .num_registers = 32,
             .jump_idx = 30,
-            .assembly = @embedFile("coro_x86_64_windows.s"),
+            .assembly = @embedFile("asm/coro_x86_64_windows.s"),
         },
         else => .{
             .num_registers = 8,
             .jump_idx = 6,
-            .assembly = @embedFile("coro_x86_64.s"),
+            .assembly = @embedFile("asm/coro_x86_64.s"),
         },
     },
     else => @compileError("Unsupported cpu architecture"),
