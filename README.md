@@ -16,8 +16,8 @@ supports {Linux, Mac} `aarch64`.*
 `build.zig.zon`
 ```zig
 .zigcoro = .{
-  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.4.0",
-  .hash = "1220963d94c1c44a71f5d14158e244c47ca84b585790240828b2288b2269b4dc0cde",
+  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.5.0",
+  .hash = "1220ff5ad2a9980015a284f5baa83aa0624a4cd2f9e427bc873872c9d699b00042bb",
 },
 ```
 
