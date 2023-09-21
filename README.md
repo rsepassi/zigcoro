@@ -33,9 +33,7 @@ my_lib.addModule("libcoro", libcoro);
 
 Alpha.
 
-Async/await, suspend/resume, and async IO are all functional and (CI) tested.
-
-Currently working on: Channels.
+Async/await, suspend/resume, Channels, and async IO are all functional and (CI) tested.
 
 See [future work](#future-work) for more.
 
@@ -43,12 +41,22 @@ See [future work](#future-work) for more.
 
 ```
 // High-level API
-xasync(func, args, *stack)->FrameT
+xasync(func, args, stack)->FrameT
 xawait(FrameT)->T
 xframe()->Frame
 xresume(frame)
 xsuspend()
 xsuspendBlock(func, ptr)
+
+Channel(T, .{.capacity = n})
+  init(Executor)
+  send(T)
+  recv->?T
+  close()
+Executor
+  init()
+  runSoon(Func)
+  tick()->bool
 
 // Optional thread-local environment
 initEnv
@@ -80,6 +88,10 @@ async APIs][libxev-watchers].
 See [`test_aio.zig`][test-aio] for usage examples.
 
 ```
+// Executor
+Executor
+  init(loop)
+
 // Top-level coroutine execution
 run
 
@@ -270,12 +282,9 @@ applications, including nonblocking IO.
 Contributions welcome.
 
 * Documentation, code comments, examples
-* Write up (rsepassi@)
-* Channels (possibly replacing yield/inject)
-* Async iterators/streams
+* Improve/add allocators for reusable stacks (e.g. Buddy allocator)
 * Concurrent execution helpers (e.g. xawaitAsReady)
 * Add support for cancellation and timeouts
-* Buddy allocator for reusable stacks
 * More aggressive stack reclamation
 * Libraries
   * TLS, HTTP, WebSocket

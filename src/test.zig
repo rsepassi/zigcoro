@@ -72,3 +72,54 @@ test "suspend block" {
     const frame = try libcoro.xasync(withSuspendBlock, .{}, stack);
     try std.testing.expectEqual(frame.status(), .Done);
 }
+
+fn sender(chan: anytype, count: usize) void {
+    defer chan.close();
+    for (0..count) |i| chan.send(i) catch unreachable;
+}
+
+fn recvr(chan: anytype) usize {
+    var sum: usize = 0;
+    while (chan.recv()) |val| sum += val;
+    return sum;
+}
+
+test "channel" {
+    var exec = libcoro.Executor.init();
+    libcoro.initEnv(.{ .stack_allocator = std.testing.allocator, .executor = &exec });
+    const start_i = libcoro.xframe().id.invocation;
+    const UsizeChannel = libcoro.Channel(usize, .{});
+    var chan = UsizeChannel.init(null);
+    const send_frame = try libcoro.xasync(sender, .{ &chan, 6 }, null);
+    defer send_frame.deinit();
+    const recv_frame = try libcoro.xasync(recvr, .{&chan}, null);
+    defer recv_frame.deinit();
+
+    while (exec.tick()) {}
+
+    libcoro.xawait(send_frame);
+    const sum = libcoro.xawait(recv_frame);
+    try std.testing.expectEqual(sum, 15);
+    const end_i = libcoro.xframe().id.invocation;
+    try std.testing.expectEqual(end_i - start_i, 12);
+}
+
+test "buffered channel" {
+    var exec = libcoro.Executor.init();
+    libcoro.initEnv(.{ .stack_allocator = std.testing.allocator, .executor = &exec });
+    const start_i = libcoro.xframe().id.invocation;
+    const UsizeChannel = libcoro.Channel(usize, .{ .capacity = 6 });
+    var chan = UsizeChannel.init(null);
+    const send_frame = try libcoro.xasync(sender, .{ &chan, 6 }, null);
+    defer send_frame.deinit();
+    const recv_frame = try libcoro.xasync(recvr, .{&chan}, null);
+    defer recv_frame.deinit();
+
+    while (exec.tick()) {}
+
+    libcoro.xawait(send_frame);
+    const sum = libcoro.xawait(recv_frame);
+    const end_i = libcoro.xframe().id.invocation;
+    try std.testing.expectEqual(sum, 15);
+    try std.testing.expectEqual(end_i - start_i, 2);
+}

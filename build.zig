@@ -40,7 +40,7 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         });
         internal_test.addModule("libcoro_options", coro_options_module);
-        coro_test.linkLibC();
+        internal_test.linkLibC();
 
         // Test step
         const test_step = b.step("test", "Run tests");

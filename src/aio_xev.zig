@@ -1,6 +1,7 @@
 const std = @import("std");
 const xev = @import("xev");
 const libcoro = @import("coro.zig");
+const CoroExecutor = @import("executor.zig").Executor;
 
 pub const xasync = libcoro.xasync;
 pub const xawait = libcoro.xawait;
@@ -8,79 +9,97 @@ pub const xawait = libcoro.xawait;
 const Frame = libcoro.Frame;
 
 const Env = struct {
-    loop: ?*xev.Loop = null,
+    exec: ?*Executor = null,
 };
 pub const EnvArg = struct {
-    loop: ?*xev.Loop = null,
+    executor: ?*Executor = null,
     stack_allocator: ?std.mem.Allocator = null,
     default_stack_size: ?usize = null,
 };
 threadlocal var env: Env = .{};
 pub fn initEnv(e: EnvArg) void {
-    env = .{ .loop = e.loop };
+    env = .{ .exec = e.executor };
     libcoro.initEnv(.{
         .stack_allocator = e.stack_allocator,
         .default_stack_size = e.default_stack_size,
+        .executor = if (e.executor) |ex| &ex.exec else null,
     });
 }
 
-fn getLoop(loop: ?*xev.Loop) *xev.Loop {
-    if (loop != null) return loop.?;
-    if (env.loop == null) @panic("No explicit loop passed and no default loop available.");
-    return env.loop.?;
+pub const Executor = struct {
+    loop: *xev.Loop,
+    exec: CoroExecutor = .{},
+    pub fn init(loop: *xev.Loop) @This() {
+        return .{ .loop = loop };
+    }
+
+    fn tick(self: *@This()) !void {
+        try self.loop.run(.once);
+        _ = self.exec.tick();
+    }
+};
+
+fn getExec(exec: ?*Executor) *Executor {
+    if (exec != null) return exec.?;
+    if (env.exec == null) @panic("No explicit Executor passed and no default Executor available.");
+    return env.exec.?;
 }
 
 // Run a coroutine to completion.
 // Must be called from "root", outside of any created coroutine.
 pub fn run(
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     func: anytype,
     args: anytype,
-    stack: ?libcoro.StackT,
+    stack: anytype,
 ) !RunT(func) {
+    std.debug.assert(!libcoro.inCoro());
     const frame = try xasync(func, args, stack);
     defer frame.deinit();
-    try runCoro(loop, frame);
+    try runCoro(exec, frame);
     return xawait(frame);
 }
 
 // Run a coroutine to completion.
 // Must be called from "root", outside of any created coroutine.
-fn runCoro(loop: ?*xev.Loop, frame: anytype) !void {
+fn runCoro(exec: ?*Executor, frame: anytype) !void {
     const f = frame.frame();
     if (f.status == .Start) libcoro.xresume(f);
-    while (f.status != .Done) try getLoop(loop).run(.once);
+    const exec_ = getExec(exec);
+    while (f.status != .Done) try exec_.tick();
 }
 
 const SleepResult = xev.Timer.RunError!void;
-pub fn sleep(loop: ?*xev.Loop, ms: u64) !void {
+pub fn sleep(exec: ?*Executor, ms: u64) !void {
+    const loop = getExec(exec).loop;
     const Data = XCallback(SleepResult);
 
     var data = Data.init();
     const w = try xev.Timer.init();
     defer w.deinit();
     var c: xev.Completion = .{};
-    w.run(getLoop(loop), &c, ms, Data, &data, &Data.callback);
+    w.run(loop, &c, ms, Data, &data, &Data.callback);
 
-    try waitForCompletion(loop, &c);
+    try waitForCompletion(exec, &c);
 
     return data.result;
 }
 
-fn waitForCompletion(loop: ?*xev.Loop, c: *xev.Completion) !void {
+fn waitForCompletion(exec: ?*Executor, c: *xev.Completion) !void {
+    const exec_ = getExec(exec);
     if (libcoro.inCoro()) {
         // In a coroutine; wait for it to be resumed
         libcoro.xsuspend();
     } else {
         // Not in a coroutine, blocking call
-        while (c.state() != .dead) try getLoop(loop).run(.once);
+        while (c.state() != .dead) try exec_.tick();
     }
 }
 
 pub const TCP = struct {
     const Self = @This();
 
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     tcp: xev.TCP,
 
     pub usingnamespace Stream(Self, xev.TCP, .{
@@ -89,8 +108,8 @@ pub const TCP = struct {
         .write = .send,
     });
 
-    pub fn init(loop: ?*xev.Loop, tcp: xev.TCP) Self {
-        return .{ .loop = loop, .tcp = tcp };
+    pub fn init(exec: ?*Executor, tcp: xev.TCP) Self {
+        return .{ .exec = exec, .tcp = tcp };
     }
 
     fn stream(self: Self) xev.TCP {
@@ -101,15 +120,16 @@ pub const TCP = struct {
         const AcceptResult = xev.TCP.AcceptError!xev.TCP;
         const Data = XCallback(AcceptResult);
 
+        const loop = getExec(self.exec).loop;
+
         var data = Data.init();
         var c: xev.Completion = .{};
-        self.tcp.accept(getLoop(self.loop), &c, Data, &data, &Data.callback);
+        self.tcp.accept(loop, &c, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
-        if (data.result) |result| {
-            return .{ .loop = self.loop, .tcp = result };
-        } else |err| return err;
+        const result = try data.result;
+        return .{ .exec = self.exec, .tcp = result };
     }
 
     const ConnectResult = xev.TCP.ConnectError!void;
@@ -137,11 +157,11 @@ pub const TCP = struct {
         };
 
         var data: Data = .{ .frame = libcoro.xframe() };
-
+        const loop = getExec(self.exec).loop;
         var c: xev.Completion = .{};
-        self.tcp.connect(getLoop(self.loop), &c, addr, Data, &data, &Data.callback);
+        self.tcp.connect(loop, &c, addr, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -171,11 +191,11 @@ pub const TCP = struct {
         };
 
         var data: Data = .{ .frame = libcoro.xframe() };
-
+        const loop = getExec(self.exec).loop;
         var c: xev.Completion = .{};
-        self.tcp.shutdown(getLoop(self.loop), &c, Data, &data, &Data.callback);
+        self.tcp.shutdown(loop, &c, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -218,10 +238,11 @@ fn Closeable(comptime T: type, comptime StreamT: type) type {
 
             var data: Data = .{ .frame = libcoro.xframe() };
 
+            const loop = getExec(self.exec).loop;
             var c: xev.Completion = .{};
-            self.stream().close(getLoop(self.loop), &c, Data, &data, &Data.callback);
+            self.stream().close(loop, &c, Data, &data, &Data.callback);
 
-            try waitForCompletion(self.loop, &c);
+            try waitForCompletion(self.exec, &c);
 
             return data.result;
         }
@@ -259,10 +280,11 @@ fn Readable(comptime T: type, comptime StreamT: type) type {
 
             var data: Data = .{ .frame = libcoro.xframe() };
 
+            const loop = getExec(self.exec).loop;
             var c: xev.Completion = .{};
-            self.stream().read(getLoop(self.loop), &c, buf, Data, &data, &Data.callback);
+            self.stream().read(loop, &c, buf, Data, &data, &Data.callback);
 
-            try waitForCompletion(self.loop, &c);
+            try waitForCompletion(self.exec, &c);
 
             return data.result;
         }
@@ -300,10 +322,11 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
 
             var data: Data = .{ .frame = libcoro.xframe() };
 
+            const loop = getExec(self.exec).loop;
             var c: xev.Completion = .{};
-            self.stream().write(getLoop(self.loop), &c, buf, Data, &data, &Data.callback);
+            self.stream().write(loop, &c, buf, Data, &data, &Data.callback);
 
-            try waitForCompletion(self.loop, &c);
+            try waitForCompletion(self.exec, &c);
             return data.result;
         }
     };
@@ -312,7 +335,7 @@ fn Writeable(comptime T: type, comptime StreamT: type) type {
 pub const File = struct {
     const Self = @This();
 
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     file: xev.File,
 
     pub usingnamespace Stream(Self, xev.File, .{
@@ -322,8 +345,8 @@ pub const File = struct {
         .threadpool = true,
     });
 
-    pub fn init(loop: ?*xev.Loop, file: xev.File) Self {
-        return .{ .loop = loop, .file = file };
+    pub fn init(exec: ?*Executor, file: xev.File) Self {
+        return .{ .exec = exec, .file = file };
     }
 
     fn stream(self: Self) xev.File {
@@ -358,10 +381,11 @@ pub const File = struct {
 
         var data: Data = .{ .frame = libcoro.xframe() };
 
+        const loop = getExec(self.exec).loop;
         var c: xev.Completion = .{};
-        self.file.pread(getLoop(self.loop), &c, buf, offset, Data, &data, &Data.callback);
+        self.file.pread(loop, &c, buf, offset, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -394,10 +418,11 @@ pub const File = struct {
 
         var data: Data = .{ .frame = libcoro.xframe() };
 
+        const loop = getExec(self.exec).loop;
         var c: xev.Completion = .{};
-        self.file.pwrite(getLoop(self.loop), &c, buf, offset, Data, &data, &Data.callback);
+        self.file.pwrite(loop, &c, buf, offset, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -406,11 +431,11 @@ pub const File = struct {
 pub const Process = struct {
     const Self = @This();
 
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     p: xev.Process,
 
-    pub fn init(loop: ?*xev.Loop, p: xev.Process) Self {
-        return .{ .loop = loop, .p = p };
+    pub fn init(exec: ?*Executor, p: xev.Process) Self {
+        return .{ .exec = exec, .p = p };
     }
 
     const WaitResult = xev.Process.WaitError!u32;
@@ -418,9 +443,10 @@ pub const Process = struct {
         const Data = XCallback(WaitResult);
         var c: xev.Completion = .{};
         var data = Data.init();
-        self.p.wait(getLoop(self.loop), &c, Data, &data, &Data.callback);
+        const loop = getExec(self.exec).loop;
+        self.p.wait(loop, &c, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -429,22 +455,24 @@ pub const Process = struct {
 pub const AsyncNotification = struct {
     const Self = @This();
 
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     notif: xev.Async,
 
-    pub fn init(loop: ?*xev.Loop, notif: xev.Async) Self {
-        return .{ .loop = loop, .notif = notif };
+    pub fn init(exec: ?*Executor, notif: xev.Async) Self {
+        return .{ .exec = exec, .notif = notif };
     }
 
     const WaitResult = xev.Async.WaitError!void;
     pub fn wait(self: Self) !void {
         const Data = XCallback(WaitResult);
 
+        const loop = getExec(self.exec).loop;
         var c: xev.Completion = .{};
         var data = Data.init();
-        self.notif.wait(getLoop(self.loop), &c, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        self.notif.wait(loop, &c, Data, &data, &Data.callback);
+
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -453,7 +481,7 @@ pub const AsyncNotification = struct {
 pub const UDP = struct {
     const Self = @This();
 
-    loop: ?*xev.Loop,
+    exec: ?*Executor,
     udp: xev.UDP,
 
     pub usingnamespace Stream(Self, xev.UDP, .{
@@ -462,8 +490,8 @@ pub const UDP = struct {
         .write = .none,
     });
 
-    pub fn init(loop: ?*xev.Loop, udp: xev.UDP) Self {
-        return .{ .loop = loop, .udp = udp };
+    pub fn init(exec: ?*Executor, udp: xev.UDP) Self {
+        return .{ .exec = exec, .udp = udp };
     }
 
     pub fn stream(self: Self) xev.UDP {
@@ -500,12 +528,13 @@ pub const UDP = struct {
             }
         };
 
+        const loop = getExec(self.exec).loop;
         var s: xev.UDP.State = undefined;
         var c: xev.Completion = .{};
         var data: Data = .{ .frame = libcoro.xframe() };
-        self.udp.read(getLoop(self.loop), &c, &s, buf, Data, &data, &Data.callback);
+        self.udp.read(loop, &c, &s, buf, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
@@ -538,12 +567,13 @@ pub const UDP = struct {
             }
         };
 
+        const loop = getExec(self.exec).loop;
         var s: xev.UDP.State = undefined;
         var c: xev.Completion = .{};
         var data: Data = .{ .frame = libcoro.xframe() };
-        self.udp.write(getLoop(self.loop), &c, &s, addr, buf, Data, &data, &Data.callback);
+        self.udp.write(loop, &c, &s, addr, buf, Data, &data, &Data.callback);
 
-        try waitForCompletion(self.loop, &c);
+        try waitForCompletion(self.exec, &c);
 
         return data.result;
     }
