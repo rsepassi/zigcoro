@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const Error = @import("errors.zig").Error;
+const Error = @import("coro.zig").Error;
 
 const ArchInfo = struct {
     num_registers: usize,
