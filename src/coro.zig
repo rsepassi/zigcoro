@@ -26,10 +26,6 @@ pub const StackT = []align(base.stack_alignment) u8;
 pub const stack_alignment = base.stack_alignment;
 pub const default_stack_size = libcoro_options.default_stack_size;
 
-pub const allocators = struct {
-    pub const FixedSizeFreeListAllocator = @import("allocator.zig").FixedSizeFreeListAllocator;
-};
-
 pub const Frame = *Coro;
 
 pub const Env = struct {
@@ -622,10 +618,6 @@ const StackOverflow = struct {
         magic_number_ptr.* = magic_number;
     }
 };
-
-test {
-    std.testing.refAllDecls(@import("allocator.zig"));
-}
 
 var test_idx: usize = 0;
 var test_steps = [_]usize{0} ** 8;

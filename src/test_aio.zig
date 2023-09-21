@@ -10,7 +10,6 @@ const AioTest = struct {
     tp: *xev.ThreadPool,
     loop: *xev.Loop,
     exec: *aio.Executor,
-    fla: *libcoro.allocators.FixedSizeFreeListAllocator,
     stacks: []u8,
 
     fn init() !@This() {
@@ -20,14 +19,12 @@ const AioTest = struct {
         var tp = try allocator.create(xev.ThreadPool);
         var loop = try allocator.create(xev.Loop);
         var exec = try allocator.create(aio.Executor);
-        var fla = try allocator.create(libcoro.allocators.FixedSizeFreeListAllocator);
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
         const stack_size = 1024 * 128;
         const num_stacks = 5;
         const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
-        fla.* = try libcoro.allocators.FixedSizeFreeListAllocator.init(libcoro.stack_alignment, stacks, stack_size, allocator);
 
         // Thread-local env
         env = .{
@@ -37,7 +34,7 @@ const AioTest = struct {
 
         aio.initEnv(.{
             .executor = exec,
-            .stack_allocator = fla.allocator(),
+            .stack_allocator = allocator,
             .default_stack_size = stack_size,
         });
 
@@ -46,7 +43,6 @@ const AioTest = struct {
             .tp = tp,
             .loop = loop,
             .exec = exec,
-            .fla = fla,
             .stacks = stacks,
         };
     }
@@ -55,11 +51,9 @@ const AioTest = struct {
         self.loop.deinit();
         self.tp.shutdown();
         self.tp.deinit();
-        self.fla.deinit();
         self.allocator.destroy(self.tp);
         self.allocator.destroy(self.loop);
         self.allocator.destroy(self.exec);
-        self.allocator.destroy(self.fla);
         self.allocator.free(self.stacks);
     }
 
