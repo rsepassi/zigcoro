@@ -22,12 +22,13 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        zig-version: [0.11.0, master]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
       - uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.11.0
+          version: ${{ matrix.zig-version }}
       - run: zig env
       - run: zig build test
       # libxev not on windows yet
