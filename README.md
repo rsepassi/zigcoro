@@ -8,8 +8,8 @@ Supports async IO via [`libxev`][libxev].
 
 [![test][ci-badge]][ci]
 
-*[Tested][ci] weekly and on push on {Windows, Linux, Mac} `x86_64` with Zig v0.11. Also
-supports {Linux, Mac} `aarch64`.*
+*[Tested][ci] weekly and on push on {Windows, Linux, Mac} `x86_64` with Zig
+v0.11 and Zig master. Also supports {Linux, Mac} `aarch64`.*
 
 ## Depend
 
