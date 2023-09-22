@@ -261,6 +261,7 @@ fn processTest() !void {
 }
 
 test "aio process" {
+    if (@import("builtin").os.tag == .windows) return;
     const t = try AioTest.init();
     defer t.deinit();
     try t.run(processTest);
