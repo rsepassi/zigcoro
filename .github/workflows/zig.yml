@@ -31,7 +31,5 @@ jobs:
           version: ${{ matrix.zig-version }}
       - run: zig env
       - run: zig build test
-      # libxev not on windows yet
-      - if: ${{ matrix.os != 'windows-latest' }}
-        run: zig build test-aio
+      - run: zig build test-aio
       - run: zig build benchmark
