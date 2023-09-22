@@ -300,7 +300,8 @@ fn tcpServer(info: *ServerInfo) !void {
     try xserver.listen(1);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    const fd = if (xev.backend == .iocp) @as(std.os.windows.ws2_32.SOCKET, @ptrCast(xserver.fd)) else xserver.fd;
+    try std.os.getsockname(fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.TCP.init(env.exec, xserver);
@@ -332,7 +333,8 @@ fn udpServer(info: *ServerInfo) !void {
     try xserver.bind(address);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    const fd = if (xev.backend == .iocp) @as(std.os.windows.ws2_32.SOCKET, @ptrCast(xserver.fd)) else xserver.fd;
+    try std.os.getsockname(fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.UDP.init(env.exec, xserver);
@@ -360,7 +362,7 @@ const NotifierState = struct {
 };
 
 fn asyncTest(state: *NotifierState) !void {
-    const notif = aio.AsyncNotification.init(env.exec, state.x);
+    var notif = aio.AsyncNotification.init(env.exec, state.x);
     try notif.wait();
     state.notified = true;
 }
