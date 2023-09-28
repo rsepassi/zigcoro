@@ -21,7 +21,7 @@ const AioTest = struct {
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
-        const stack_size = 1024 * 32;
+        const stack_size = 1024 * 128;
 
         // Thread-local env
         env = .{
