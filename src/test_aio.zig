@@ -22,7 +22,7 @@ const AioTest = struct {
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
-        const stack_size = 1024 * 128;
+        const stack_size = 1024 * 512;
         const num_stacks = 5;
         const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
 
