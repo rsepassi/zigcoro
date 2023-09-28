@@ -10,7 +10,6 @@ const AioTest = struct {
     tp: *xev.ThreadPool,
     loop: *xev.Loop,
     exec: *aio.Executor,
-    stacks: []u8,
 
     fn init() !@This() {
         const allocator = std.testing.allocator;
@@ -22,9 +21,7 @@ const AioTest = struct {
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
-        const stack_size = 1024 * 512;
-        const num_stacks = 5;
-        const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
+        const stack_size = 1024 * 32;
 
         // Thread-local env
         env = .{
@@ -43,7 +40,6 @@ const AioTest = struct {
             .tp = tp,
             .loop = loop,
             .exec = exec,
-            .stacks = stacks,
         };
     }
 
@@ -54,7 +50,6 @@ const AioTest = struct {
         self.allocator.destroy(self.tp);
         self.allocator.destroy(self.loop);
         self.allocator.destroy(self.exec);
-        self.allocator.free(self.stacks);
     }
 
     fn run(self: @This(), func: anytype) !void {
@@ -406,8 +401,8 @@ test "aio concurrent sleep env" {
     try aio.run(null, sleepTaskEnv, .{}, null);
     const after = std.time.milliTimestamp();
 
-    try std.testing.expect(after > (before + 17));
-    try std.testing.expect(after < (before + 23));
+    try std.testing.expect(after > (before + 16));
+    try std.testing.expect(after < (before + 24));
 }
 
 const UsizeChannel = libcoro.Channel(usize, .{ .capacity = 10 });

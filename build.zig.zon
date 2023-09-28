@@ -3,7 +3,7 @@
     .version = "0.0.0",
     .dependencies = .{
         .libxev = .{
-            .url = "https://api.github.com/repos/rsepassi/libxev/tarball/62196bf",
+            .url = "https://api.github.com/repos/mitchellh/libxev/tarball/ecbc161",
             .hash = "1220f34357168affd9aab1a3fcafcaff093c44beb75ce1d4d4b75490e90729221771",
         },
     },
