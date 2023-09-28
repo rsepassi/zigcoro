@@ -120,7 +120,7 @@ test "aio concurrent sleep" {
 
     const stack = try libcoro.stackAlloc(
         t.allocator,
-        1024 * 8,
+        null,
     );
     defer t.allocator.free(stack);
     const before = std.time.milliTimestamp();
