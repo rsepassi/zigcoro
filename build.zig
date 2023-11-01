@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) !void {
         const bench = b.addExecutable(.{
             .name = "benchmark",
             .root_source_file = .{ .path = "benchmark.zig" },
+            .target = target,
             .optimize = .ReleaseFast,
         });
         bench.addModule("libcoro", coro);
