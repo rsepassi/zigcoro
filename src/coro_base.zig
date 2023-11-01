@@ -26,6 +26,11 @@ const arch_info: ArchInfo = switch (builtin.cpu.arch) {
             .assembly = @embedFile("asm/coro_x86_64.s"),
         },
     },
+    .riscv64 => .{
+        .num_registers = 25,
+        .jump_idx = 24,
+        .assembly = @embedFile("asm/coro_riscv64.s"),
+    },
     else => @compileError("Unsupported cpu architecture"),
 };
 
