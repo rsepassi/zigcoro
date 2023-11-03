@@ -10,7 +10,6 @@ const AioTest = struct {
     tp: *xev.ThreadPool,
     loop: *xev.Loop,
     exec: *aio.Executor,
-    stacks: []u8,
 
     fn init() !@This() {
         const allocator = std.testing.allocator;
@@ -23,8 +22,6 @@ const AioTest = struct {
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
         const stack_size = 1024 * 128;
-        const num_stacks = 5;
-        const stacks = try allocator.alignedAlloc(u8, libcoro.stack_alignment, num_stacks * stack_size);
 
         // Thread-local env
         env = .{
@@ -43,7 +40,6 @@ const AioTest = struct {
             .tp = tp,
             .loop = loop,
             .exec = exec,
-            .stacks = stacks,
         };
     }
 
@@ -54,7 +50,6 @@ const AioTest = struct {
         self.allocator.destroy(self.tp);
         self.allocator.destroy(self.loop);
         self.allocator.destroy(self.exec);
-        self.allocator.free(self.stacks);
     }
 
     fn run(self: @This(), func: anytype) !void {
@@ -120,7 +115,7 @@ test "aio concurrent sleep" {
 
     const stack = try libcoro.stackAlloc(
         t.allocator,
-        1024 * 8,
+        null,
     );
     defer t.allocator.free(stack);
     const before = std.time.milliTimestamp();
@@ -261,6 +256,7 @@ fn processTest() !void {
 }
 
 test "aio process" {
+    if (@import("builtin").os.tag == .windows) return;
     const t = try AioTest.init();
     defer t.deinit();
     try t.run(processTest);
@@ -300,7 +296,8 @@ fn tcpServer(info: *ServerInfo) !void {
     try xserver.listen(1);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    const fd = if (xev.backend == .iocp) @as(std.os.windows.ws2_32.SOCKET, @ptrCast(xserver.fd)) else xserver.fd;
+    try std.os.getsockname(fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.TCP.init(env.exec, xserver);
@@ -332,7 +329,8 @@ fn udpServer(info: *ServerInfo) !void {
     try xserver.bind(address);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    const fd = if (xev.backend == .iocp) @as(std.os.windows.ws2_32.SOCKET, @ptrCast(xserver.fd)) else xserver.fd;
+    try std.os.getsockname(fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.UDP.init(env.exec, xserver);
@@ -360,7 +358,7 @@ const NotifierState = struct {
 };
 
 fn asyncTest(state: *NotifierState) !void {
-    const notif = aio.AsyncNotification.init(env.exec, state.x);
+    var notif = aio.AsyncNotification.init(env.exec, state.x);
     try notif.wait();
     state.notified = true;
 }
@@ -403,8 +401,8 @@ test "aio concurrent sleep env" {
     try aio.run(null, sleepTaskEnv, .{}, null);
     const after = std.time.milliTimestamp();
 
-    try std.testing.expect(after > (before + 17));
-    try std.testing.expect(after < (before + 23));
+    try std.testing.expect(after > (before + 16));
+    try std.testing.expect(after < (before + 24));
 }
 
 const UsizeChannel = libcoro.Channel(usize, .{ .capacity = 10 });

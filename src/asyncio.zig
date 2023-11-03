@@ -463,7 +463,7 @@ pub const AsyncNotification = struct {
     }
 
     const WaitResult = xev.Async.WaitError!void;
-    pub fn wait(self: Self) !void {
+    pub fn wait(self: *Self) !void {
         const Data = XCallback(WaitResult);
 
         const loop = getExec(self.exec).loop;
