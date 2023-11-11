@@ -1,7 +1,13 @@
 const std = @import("std");
 const libcoro = @import("libcoro");
 
-fn coroFnImpl(x: *usize) usize {
+const BigStruct = struct {
+    a: u128,
+    b: u128,
+    c: u128,
+};
+
+fn coroFnImpl(x: *usize, _: *anyopaque, _: *anyopaque, _: *anyopaque, _: BigStruct) usize {
     x.* += 1;
     libcoro.xsuspend();
     x.* += 3;
@@ -16,7 +22,7 @@ test "with FrameT and xasync xawait" {
 
     var x: usize = 0;
 
-    var frame = try libcoro.xasync(coroFnImpl, .{&x}, stack);
+    var frame = try libcoro.xasync(coroFnImpl, .{ &x, null, null, null, undefined }, stack);
 
     try std.testing.expectEqual(x, 1);
     libcoro.xresume(frame);
