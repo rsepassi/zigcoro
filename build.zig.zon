@@ -3,8 +3,8 @@
     .version = "0.0.0",
     .dependencies = .{
         .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev#main",
-            .hash = "12203de3dbf9c235903c71122448ef031622ba8d64b250205934e2a65018b92b9717",
+            .url = "git+https://github.com/mitchellh/libxev#74bc7aea4a8f88210f0ad4215108613ab7e7af1a",
+            .hash = "122029743e5d96aa1b57a1b99ff58bf13ff9ed6d8f624ac3ae8074062feb91c5bd8d",
         },
     },
     .paths = .{
