@@ -16,8 +16,8 @@ pub fn build(b: *std.Build) !void {
     coro_options.addOption(usize, "debug_log_level", debug_log_level);
     const coro_options_module = coro_options.createModule();
     const coro = b.addModule("libcoro", .{
-        .source_file = .{ .path = "src/main.zig" },
-        .dependencies = &[_]std.Build.ModuleDependency{
+        .root_source_file = .{ .path = "src/main.zig" },
+        .imports = &.{ 
             .{ .name = "xev", .module = xev },
             .{ .name = "libcoro_options", .module = coro_options_module },
         },
