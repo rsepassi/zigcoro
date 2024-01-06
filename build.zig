@@ -16,8 +16,8 @@ pub fn build(b: *std.Build) !void {
     coro_options.addOption(usize, "debug_log_level", debug_log_level);
     const coro_options_module = coro_options.createModule();
     const coro = b.addModule("libcoro", .{
-        .source_file = .{ .path = "src/main.zig" },
-        .dependencies = &[_]std.Build.ModuleDependency{
+        .root_source_file = .{ .path = "src/main.zig" },
+        .imports = &.{ 
             .{ .name = "xev", .module = xev },
             .{ .name = "libcoro_options", .module = coro_options_module },
         },
@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        coro_test.addModule("libcoro", coro);
+        coro_test.root_module.addImport("libcoro", coro);
         coro_test.linkLibC();
 
         const internal_test = b.addTest(.{
@@ -39,7 +39,7 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        internal_test.addModule("libcoro_options", coro_options_module);
+        internal_test.root_module.addImport("libcoro_options", coro_options_module);
         internal_test.linkLibC();
 
         // Test step
@@ -55,8 +55,8 @@ pub fn build(b: *std.Build) !void {
             .target = target,
             .optimize = optimize,
         });
-        aio_test.addModule("libcoro", coro);
-        aio_test.addModule("xev", xev);
+        aio_test.root_module.addImport("libcoro", coro);
+        aio_test.root_module.addImport("xev", xev);
         aio_test.linkLibC();
 
         // Test step
@@ -69,9 +69,10 @@ pub fn build(b: *std.Build) !void {
         const bench = b.addExecutable(.{
             .name = "benchmark",
             .root_source_file = .{ .path = "benchmark.zig" },
+            .target = target,
             .optimize = .ReleaseFast,
         });
-        bench.addModule("libcoro", coro);
+        bench.root_module.addImport("libcoro", coro);
         bench.linkLibC();
         const bench_run = b.addRunArtifact(bench);
         if (b.args) |args| {
