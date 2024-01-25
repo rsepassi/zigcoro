@@ -10,7 +10,8 @@ Supports async IO via [`libxev`][libxev].
 
 Branch `main` tested against Zig v0.11.0.
 
-Branch `zigmaster` tested against Zig v0.12.0-dev.1372+8457439a8.
+Use branch [`zigmaster`](https://github.com/rsepassi/zigcoro/tree/zigmaster) to
+use Zig master. See its README for what version it is tested against.
 
 Coroutines supported on Windows `x86_64`, Linux {`x86_64`, `aarch64`, `riscv64`}, and Mac {`x86_64`, `aarch64`}.
 
