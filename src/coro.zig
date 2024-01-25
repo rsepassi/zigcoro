@@ -92,7 +92,7 @@ pub fn xasync(func: anytype, args: anytype, stack: anytype) !FrameT(func, .{ .Ar
         .ArgsT = @TypeOf(args),
     });
     const framet = try FrameType.init(args, stack_info.stack, stack_info.owned);
-    var frame = framet.frame();
+    const frame = framet.frame();
     xresume(frame);
     return FrameType.wrap(frame);
 }
@@ -193,7 +193,7 @@ const Coro = struct {
 
     fn initFromStack(func: *const fn () void, stack: *Stack, owns_stack: bool, storage: ?*anyopaque) !Frame {
         try StackOverflow.setMagicNumber(stack.full);
-        var coro = try stack.push(Coro);
+        const coro = try stack.push(Coro);
         const base_coro = try base.Coro.init(&runcoro, stack.remaining());
         coro.* = @This(){
             .func = func,
@@ -322,7 +322,7 @@ const CoroT = struct {
                 owns_stack: bool,
             ) !Self {
                 var s = Stack.init(stack);
-                var inner = try s.push(InnerStorage);
+                const inner = try s.push(InnerStorage);
                 inner.* = .{
                     .args = args,
                 };
@@ -648,7 +648,7 @@ test "basic suspend and resume" {
     defer allocator.free(stack);
 
     testSetIdx(0);
-    var test_coro = try Coro.init(testFn, stack, false, null);
+    const test_coro = try Coro.init(testFn, stack, false, null);
 
     testSetIdx(1);
     try std.testing.expectEqual(test_coro.status, .Start);
@@ -690,7 +690,7 @@ test "with values" {
     const allocator = std.testing.allocator;
     const stack = try stackAlloc(allocator, null);
     defer allocator.free(stack);
-    var coro = try Coro.init(Test.coroWrap, stack, false, @ptrCast(&storage));
+    const coro = try Coro.init(Test.coroWrap, stack, false, @ptrCast(&storage));
 
     try std.testing.expectEqual(storage.x.*, 0);
     xresume(coro);
@@ -744,7 +744,7 @@ test "iterator" {
     const stack = try stackAlloc(allocator, null);
     defer allocator.free(stack);
 
-    var x: usize = 1;
+    const x: usize = 1;
     var coro = try Iter.init(.{x}, stack, false);
     var yielded: usize = undefined;
     yielded = Iter.xnextStart(coro); // first resume takes no value
