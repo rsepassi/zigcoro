@@ -28,7 +28,6 @@ pub const Error = error{
 };
 pub const StackT = []align(base.stack_alignment) u8;
 pub const stack_alignment = base.stack_alignment;
-pub const default_stack_size = libcoro_options.default_stack_size;
 
 pub const Frame = *Coro;
 
@@ -36,6 +35,10 @@ pub const Env = struct {
     stack_allocator: ?std.mem.Allocator = null,
     default_stack_size: ?usize = null,
     executor: ?*Executor = null,
+
+    fn getDefaultStackSize(self: @This()) usize {
+      return self.default_stack_size orelse libcoro_options.default_stack_size;
+    }
 };
 threadlocal var env: Env = .{};
 pub fn initEnv(e: Env) void {
@@ -55,7 +58,7 @@ fn getStack(stack: anytype) !StackInfo {
     if (T == @TypeOf(null) or (is_optional and stack == null)) {
         // Use env allocator with default stack size
         if (env.stack_allocator == null) @panic("No explicit stack passed and no default stack allocator available");
-        return .{ .stack = try stackAlloc(env.stack_allocator.?, env.default_stack_size), .owned = true };
+        return .{ .stack = try stackAlloc(env.stack_allocator.?, null), .owned = true };
     } else if (T == comptime_int or T == usize) {
         // Use env allocator with provided stack size
         const stack_size: usize = @intCast(stack);
@@ -102,7 +105,7 @@ pub const FrameT = CoroT.fromFunc;
 // Allocate a stack suitable for coroutine usage.
 // Caller is responsible for freeing memory.
 pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
-    return try allocator.alignedAlloc(u8, stack_alignment, size orelse default_stack_size);
+    return try allocator.alignedAlloc(u8, stack_alignment, size orelse env.getDefaultStackSize());
 }
 
 // True if within a coroutine, false if at top-level.
