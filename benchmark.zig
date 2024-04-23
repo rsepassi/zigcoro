@@ -28,7 +28,7 @@ fn contextSwitchBm() !void {
         // warmup
         num_bounces = 100_000;
         {
-            var test_coro = try libcoro.xasync(testFn, .{}, stack);
+            const test_coro = try libcoro.xasync(testFn, .{}, stack);
             for (0..num_bounces) |_| {
                 libcoro.xresume(test_coro);
             }
@@ -37,7 +37,7 @@ fn contextSwitchBm() !void {
 
         num_bounces = 20_000_000;
         {
-            var test_coro = try libcoro.xasync(testFn, .{}, stack);
+            const test_coro = try libcoro.xasync(testFn, .{}, stack);
 
             const start = std.time.nanoTimestamp();
             for (0..num_bounces) |_| {
@@ -118,12 +118,12 @@ fn ncorosBm(num_coros: usize) !void {
     var coros = try allocator.alloc(libcoro.Frame, num_coros);
     defer allocator.free(coros);
 
-    var buf = try allocator.alloc(u8, num_coros * 1024 * 4);
+    const buf = try allocator.alloc(u8, num_coros * 1024 * 4);
     var fba = std.heap.FixedBufferAllocator.init(buf);
     const alloc2 = fba.allocator();
 
     for (0..num_coros) |i| {
-        var stack = try libcoro.stackAlloc(alloc2, null);
+        const stack = try libcoro.stackAlloc(alloc2, null);
         const coro = try libcoro.xasync(suspendRepeat, .{}, stack);
         coros[i] = coro.frame();
     }

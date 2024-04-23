@@ -19,6 +19,9 @@ const AioTest = struct {
         var tp = try allocator.create(xev.ThreadPool);
         var loop = try allocator.create(xev.Loop);
         var exec = try allocator.create(aio.Executor);
+        _ = &tp;
+        _ = &loop;
+        _ = &exec;
         tp.* = xev.ThreadPool.init(.{});
         loop.* = try xev.Loop.init(.{ .thread_pool = tp });
         exec.* = aio.Executor.init(loop);
@@ -98,14 +101,14 @@ fn sleepTask() !void {
         null,
     );
     defer env.allocator.free(stack);
-    var sleep1 = try aio.xasync(sleep, .{10}, stack);
+    const sleep1 = try aio.xasync(sleep, .{10}, stack);
 
     const stack2 = try libcoro.stackAlloc(
         env.allocator,
         null,
     );
     defer env.allocator.free(stack2);
-    var sleep2 = try aio.xasync(sleep, .{20}, stack2);
+    const sleep2 = try aio.xasync(sleep, .{20}, stack2);
 
     const after = try aio.xawait(sleep1);
     const after2 = try aio.xawait(sleep2);
@@ -231,11 +234,11 @@ fn udpMain() !void {
 
     const stack1 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack1);
-    var server_co = try aio.xasync(udpServer, .{&info}, stack1);
+    const server_co = try aio.xasync(udpServer, .{&info}, stack1);
 
     const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack2);
-    var client_co = try aio.xasync(udpClient, .{&info}, stack2);
+    const client_co = try aio.xasync(udpClient, .{&info}, stack2);
 
     try aio.xawait(server_co);
     try aio.xawait(client_co);
@@ -272,11 +275,11 @@ fn asyncMain() !void {
 
     const stack = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack);
-    var co = try aio.xasync(asyncTest, .{&nstate}, stack);
+    const co = try aio.xasync(asyncTest, .{&nstate}, stack);
 
     const stack2 = try libcoro.stackAlloc(env.allocator, stack_size);
     defer env.allocator.free(stack2);
-    var nco = try aio.xasync(asyncNotifier, .{&nstate}, stack2);
+    const nco = try aio.xasync(asyncNotifier, .{&nstate}, stack2);
 
     try aio.xawait(co);
     try aio.xawait(nco);
@@ -300,7 +303,7 @@ fn tcpServer(info: *ServerInfo) !void {
     try xserver.listen(1);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    try std.posix.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.TCP.init(env.exec, xserver);
@@ -332,7 +335,7 @@ fn udpServer(info: *ServerInfo) !void {
     try xserver.bind(address);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    try std.posix.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.UDP.init(env.exec, xserver);

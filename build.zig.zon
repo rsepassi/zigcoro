@@ -3,8 +3,23 @@
     .version = "0.0.0",
     .dependencies = .{
         .libxev = .{
-            .url = "https://api.github.com/repos/mitchellh/libxev/tarball/f06915",
-            .hash = "1220622831138efa0105981c34677a254894d33748cc0b2ff9694972ae3ec6408ce1",
+            .url = "git+https://github.com/mitchellh/libxev#a284cf851fe2f88f8947c01160c39ff216dacea1",
+            .hash = "12205b8ea5495b812b9a8943535a7af8da556644d2c1599dc01e1a5ea7aaf59bb2c7",
         },
+    },
+    .paths = .{
+        "build.zig.zon",
+        "build.zig",
+        "benchmark.zig",
+        "src/coro_base.zig",
+        "src/asm/coro_x86_64_windows.s",
+        "src/asm/coro_x86_64.s",
+        "src/asm/coro_aarch64.s",
+        "src/main.zig",
+        "src/coro.zig",
+        "src/test_aio.zig",
+        "src/executor.zig",
+        "src/asyncio.zig",
+        "src/test.zig",
     },
 }
