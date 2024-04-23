@@ -211,8 +211,8 @@ const Coro = struct {
     }
 
     fn runcoro(from: *base.Coro, this: *base.Coro) callconv(.C) noreturn {
-        const from_coro = @fieldParentPtr(Coro, "impl", from);
-        const this_coro = @fieldParentPtr(Coro, "impl", this);
+        const from_coro: *Coro = @fieldParentPtr("impl", from);
+        const this_coro: *Coro = @fieldParentPtr("impl", this);
         if (debug_log_level >= 3) {
             std.debug.print("coro start {any}\n", .{this_coro.id});
         }

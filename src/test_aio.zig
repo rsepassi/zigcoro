@@ -303,7 +303,7 @@ fn tcpServer(info: *ServerInfo) !void {
     try xserver.listen(1);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    try std.posix.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.TCP.init(env.exec, xserver);
@@ -335,7 +335,7 @@ fn udpServer(info: *ServerInfo) !void {
     try xserver.bind(address);
 
     var sock_len = address.getOsSockLen();
-    try std.os.getsockname(xserver.fd, &address.any, &sock_len);
+    try std.posix.getsockname(xserver.fd, &address.any, &sock_len);
     info.addr = address;
 
     const server = aio.UDP.init(env.exec, xserver);
