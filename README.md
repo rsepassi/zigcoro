@@ -19,8 +19,8 @@ Async IO supported on Linux {`x86_64`, `aarch64`}, and Mac {`x86_64`, `aarch64`}
 `build.zig.zon`
 ```zig
 .zigcoro = .{
-  .url = "https://api.github.com/repos/rsepassi/zigcoro/tarball/v0.5.0",
-  .hash = "1220ff5ad2a9980015a284f5baa83aa0624a4cd2f9e427bc873872c9d699b00042bb",
+  .url = "git+https://github.com/rsepassi/zigcoro#<commit hash>",
+  .hash = "<hash>",
 },
 ```
 
@@ -32,7 +32,7 @@ my_lib.addModule("libcoro", libcoro);
 
 ## Current status
 
-*Updated 2023/09/15*
+*Updated 2024/04/23*
 
 Alpha.
 
