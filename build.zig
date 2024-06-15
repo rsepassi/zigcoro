@@ -16,8 +16,8 @@ pub fn build(b: *std.Build) !void {
     coro_options.addOption(usize, "debug_log_level", debug_log_level);
     const coro_options_module = coro_options.createModule();
     const coro = b.addModule("libcoro", .{
-        .root_source_file = .{ .path = "src/main.zig" },
-        .imports = &.{ 
+        .root_source_file = b.path("src/main.zig"),
+        .imports = &.{
             .{ .name = "xev", .module = xev },
             .{ .name = "libcoro_options", .module = coro_options_module },
         },
@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) !void {
     {
         const coro_test = b.addTest(.{
             .name = "corotest",
-            .root_source_file = .{ .path = "src/test.zig" },
+            .root_source_file = b.path("src/test.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -35,7 +35,7 @@ pub fn build(b: *std.Build) !void {
 
         const internal_test = b.addTest(.{
             .name = "corotest-internal",
-            .root_source_file = .{ .path = "src/coro.zig" },
+            .root_source_file = b.path("src/coro.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -51,7 +51,7 @@ pub fn build(b: *std.Build) !void {
     {
         const aio_test = b.addTest(.{
             .name = "aiotest",
-            .root_source_file = .{ .path = "src/test_aio.zig" },
+            .root_source_file = b.path("src/test_aio.zig"),
             .target = target,
             .optimize = optimize,
         });
@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) !void {
         // Benchmark
         const bench = b.addExecutable(.{
             .name = "benchmark",
-            .root_source_file = .{ .path = "benchmark.zig" },
+            .root_source_file = b.path("benchmark.zig"),
             .target = target,
             .optimize = .ReleaseFast,
         });
