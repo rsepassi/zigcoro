@@ -252,7 +252,7 @@ test "aio udp" {
 
 fn processTest() !void {
     const alloc = std.heap.c_allocator;
-    var child = std.ChildProcess.init(&.{ "sh", "-c", "exit 0" }, alloc);
+    var child = std.process.Child.init(&.{ "sh", "-c", "exit 0" }, alloc);
     try child.spawn();
 
     var xp = try xev.Process.init(child.id);

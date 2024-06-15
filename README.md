@@ -8,7 +8,7 @@ Supports async IO via [`libxev`][libxev].
 
 [![test][ci-badge]][ci]
 
-Branch `main` tested against Zig v0.12.0.
+Branch `main` tested against Zig 0.14.0-dev.32+4aa15440c
 
 Coroutines supported on Windows `x86_64`, Linux {`x86_64`, `aarch64`, `riscv64`}, and Mac {`x86_64`, `aarch64`}.
 
