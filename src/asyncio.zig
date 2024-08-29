@@ -89,7 +89,7 @@ fn waitForCompletion(exec: ?*Executor, c: *xev.Completion) !void {
     const exec_ = getExec(exec);
     if (libcoro.inCoro()) {
         // In a coroutine; wait for it to be resumed
-        libcoro.xsuspend();
+        while (c.state() != .dead) libcoro.xsuspend();
     } else {
         // Not in a coroutine, blocking call
         while (c.state() != .dead) try exec_.tick();

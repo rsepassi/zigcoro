@@ -444,3 +444,48 @@ test "aio mix channels" {
     const sum = try aio.run(null, chanMain, .{}, null);
     try std.testing.expectEqual(sum, 15);
 }
+
+const TaskState = struct { called: bool = false };
+
+fn notifyAfterBlockingSleep(notifcation: *aio.AsyncNotification, state: *NotifierState) void {
+    std.time.sleep(20 * std.time.ns_per_ms);
+    notifcation.notif.notify() catch unreachable;
+    state.notified = true;
+}
+
+fn asyncRecurseSleepAndNotification() !void {
+    const pool: *std.Thread.Pool = try env.allocator.create(std.Thread.Pool);
+    defer env.allocator.destroy(pool);
+
+    try std.Thread.Pool.init(pool, .{ .allocator = env.allocator });
+    defer pool.deinit();
+
+    var nstate = NotifierState{ .x = try xev.Async.init() };
+    var tstate = TaskState{};
+
+    var notification = aio.AsyncNotification.init(env.exec, nstate.x);
+    defer notification.notif.deinit();
+
+    const asyncTaskDoingAsyncSleep = try aio.xasync(struct {
+        fn call(exec: *aio.Executor, state: *TaskState) !void {
+            try aio.sleep(exec, 1);
+            state.called = true;
+        }
+    }.call, .{ env.exec, &tstate }, null);
+    defer asyncTaskDoingAsyncSleep.deinit();
+
+    try pool.spawn(notifyAfterBlockingSleep, .{ &notification, &nstate });
+
+    try notification.wait();
+    try libcoro.xawait(asyncTaskDoingAsyncSleep);
+
+    try std.testing.expect(nstate.notified);
+    try std.testing.expect(tstate.called);
+}
+
+test "aio mix async recurse in sleep and notification" {
+    const t = try AioTest.init();
+    defer t.deinit();
+
+    try t.run(asyncRecurseSleepAndNotification);
+}
