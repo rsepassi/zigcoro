@@ -1,3 +1,14 @@
+//! libcoro mutable state:
+//! * ThreadState
+//!   * current_coro: set in ThreadState.switchTo
+//!   * next_coro_id: set in ThreadState.nextCoroId
+//!   * suspend_block: set in xsuspendBlock, cleared in ThreadState.switchIn
+//! * Coro
+//!   * resumer: set in ThreadState.switchTo
+//!   * status:
+//!     * Active, Suspended: set in ThreadState.switchTo
+//!     * Done: set in runcoro
+//!   * id.invocation: incremented in ThreadState.switchTo
 const std = @import("std");
 const builtin = @import("builtin");
 const base = @import("coro_base.zig");
@@ -6,18 +17,6 @@ const libcoro_options = @import("libcoro_options");
 
 const log = std.log.scoped(.libcoro);
 const debug_log_level = libcoro_options.debug_log_level;
-
-// libcoro mutable state:
-// * ThreadState
-//   * current_coro: set in ThreadState.switchTo
-//   * next_coro_id: set in ThreadState.nextCoroId
-//   * suspend_block: set in xsuspendBlock, cleared in ThreadState.switchIn
-// * Coro
-//   * resumer: set in ThreadState.switchTo
-//   * status:
-//     * Active, Suspended: set in ThreadState.switchTo
-//     * Done: set in runcoro
-//   * id.invocation: incremented in ThreadState.switchTo
 
 // Public API
 // ============================================================================
@@ -70,8 +69,8 @@ fn getStack(stack: anytype) !StackInfo {
     }
 }
 
-// Await the coroutine(s).
-// frame: FrameT: runs the coroutine until done and returns its return value.
+/// Await the coroutine(s).
+/// frame: FrameT: runs the coroutine until done and returns its return value.
 pub fn xawait(frame: anytype) xawaitT(@TypeOf(frame)) {
     const f = frame.frame();
     while (f.status != .Done) xsuspend();
@@ -83,9 +82,9 @@ fn xawaitT(comptime T: type) type {
     return T.Signature.ReturnT();
 }
 
-// Create a coroutine and start it
-// stack is {null, usize, StackT}. If null or usize, initEnv must have been
-// called with a default stack allocator.
+/// Create a coroutine and start it
+/// stack is {null, usize, StackT}. If null or usize, initEnv must have been
+/// called with a default stack allocator.
 pub fn xasync(func: anytype, args: anytype, stack: anytype) !FrameT(func, .{ .ArgsT = @TypeOf(args) }) {
     const stack_info = try getStack(stack);
     const FrameType = CoroT.fromFunc(func, .{
@@ -99,35 +98,35 @@ pub fn xasync(func: anytype, args: anytype, stack: anytype) !FrameT(func, .{ .Ar
 
 pub const FrameT = CoroT.fromFunc;
 
-// Allocate a stack suitable for coroutine usage.
-// Caller is responsible for freeing memory.
+/// Allocate a stack suitable for coroutine usage.
+/// Caller is responsible for freeing memory.
 pub fn stackAlloc(allocator: std.mem.Allocator, size: ?usize) !StackT {
     return try allocator.alignedAlloc(u8, stack_alignment, size orelse default_stack_size);
 }
 
-// True if within a coroutine, false if at top-level.
+/// True if within a coroutine, false if at top-level.
 pub fn inCoro() bool {
     return thread_state.inCoro();
 }
 
-// Returns the currently running coroutine
+/// Returns the currently running coroutine
 pub fn xframe() Frame {
     return thread_state.current();
 }
 
-// Resume the passed coroutine, suspending the current coroutine.
-// When the resumed coroutine suspends, this call will return.
-// Note: When the resumed coroutine returns, control will switch to its parent
-// (i.e. its original resumer).
-// frame: Frame or FrameT
+/// Resume the passed coroutine, suspending the current coroutine.
+/// When the resumed coroutine suspends, this call will return.
+/// Note: When the resumed coroutine returns, control will switch to its parent
+/// (i.e. its original resumer).
+/// frame: Frame or FrameT
 pub fn xresume(frame: anytype) void {
     const f = frame.frame();
     thread_state.switchIn(f);
 }
 
-// Suspend the current coroutine, yielding control back to its
-// resumer. Returns when the coroutine is resumed.
-// Must be called from within a coroutine (i.e. not the top level).
+/// Suspend the current coroutine, yielding control back to its
+/// resumer. Returns when the coroutine is resumed.
+/// Must be called from within a coroutine (i.e. not the top level).
 pub fn xsuspend() void {
     xsuspendSafe() catch |e| {
         log.err("{any}\n", .{e});
@@ -155,7 +154,7 @@ pub fn xsuspendSafe() Error!void {
 }
 
 const Coro = struct {
-    // Coroutine status
+    /// Coroutine status
     const Status = enum {
         Start,
         Suspended,
@@ -164,21 +163,21 @@ const Coro = struct {
     };
     const Signature = VoidSignature;
 
-    // Function to run in the coroutine
+    /// Function to run in the coroutine
     func: *const fn () void,
-    // Coroutine stack
+    /// Coroutine stack
     stack: StackT,
-    // Whether this stack is env-allocated
+    /// Whether this stack is env-allocated
     owns_stack: bool = false,
-    // Architecture-specific implementation
+    /// Architecture-specific implementation
     impl: base.Coro,
-    // The coroutine that will be yielded to upon suspend
+    /// The coroutine that will be yielded to upon suspend
     resumer: *Coro = undefined,
-    // Current status
+    /// Current status
     status: Status = .Start,
-    // Coro id, {thread, coro id, invocation id}
+    /// Coro id, {thread, coro id, invocation id}
     id: CoroId.InvocationId,
-    // Caller-specified coro-local storage
+    /// Caller-specified coro-local storage
     storage: ?*anyopaque = null,
 
     fn init(func: *const fn () void, stack: StackT, owns_stack: bool, storage: ?*anyopaque) !Frame {
@@ -256,18 +255,18 @@ const CoroT = struct {
         ArgsT: ?type = null,
     };
 
-    // The signature of a coroutine.
-    // Considering a coroutine a generalization of a regular function,
-    // it has the typical input arguments and outputs (Func) and also
-    // the types of its yielded (YieldT) and injected (InjectT) values.
+    /// The signature of a coroutine.
+    /// Considering a coroutine a generalization of a regular function,
+    /// it has the typical input arguments and outputs (Func) and also
+    /// the types of its yielded (YieldT) and injected (InjectT) values.
     const Signature = struct {
         Func: type,
         YieldT: type = void,
         InjectT: type = void,
         ArgsT: type,
 
-        // If the function this signature represents is compile-time known,
-        // it can be held here.
+        /// If the function this signature represents is compile-time known,
+        /// it can be held here.
         func_ptr: ?type = null,
 
         fn init(comptime Func: anytype, comptime options: CoroT.Options) @This() {
@@ -298,7 +297,7 @@ const CoroT = struct {
         // Stored in the coro stack
         const InnerStorage = struct {
             args: Sig.ArgsT,
-            // Values that are produced during coroutine execution
+            /// Values that are produced during coroutine execution
             value: union {
                 yieldval: Sig.YieldT,
                 injectval: Sig.InjectT,
@@ -312,9 +311,9 @@ const CoroT = struct {
 
             _frame: Frame,
 
-            // Create a Coro
-            // self and stack pointers must remain stable for the lifetime of
-            // the coroutine.
+            /// Create a Coro
+            /// self and stack pointers must remain stable for the lifetime of
+            /// the coroutine.
             fn init(
                 args: Sig.ArgsT,
                 stack: StackT,
@@ -368,14 +367,14 @@ const CoroT = struct {
             // coroutine. All other actions act upon the coroutine from the
             // outside.
 
-            // Initial resume, takes no injected value, returns yielded value
+            /// Initial resume, takes no injected value, returns yielded value
             pub fn xnextStart(self: Self) Sig.YieldT {
                 xresume(self._frame);
                 const storage = self._frame.getStorage(InnerStorage);
                 return storage.value.yieldval;
             }
 
-            // Final resume, takes injected value, returns coroutine's return value
+            /// Final resume, takes injected value, returns coroutine's return value
             pub fn xnextEnd(self: Self, val: Sig.InjectT) Sig.ReturnT() {
                 const storage = self._frame.getStorage(InnerStorage);
                 storage.value = .{ .injectval = val };
@@ -383,7 +382,7 @@ const CoroT = struct {
                 return storage.value.retval;
             }
 
-            // Intermediate resume, takes injected value, returns yielded value
+            /// Intermediate resume, takes injected value, returns yielded value
             pub fn xnext(self: Self, val: Sig.InjectT) Sig.YieldT {
                 const storage = self._frame.getStorage(InnerStorage);
                 storage.value = .{ .injectval = val };
@@ -391,7 +390,7 @@ const CoroT = struct {
                 return storage.value.yieldval;
             }
 
-            // Yields value, returns injected value
+            /// Yields value, returns injected value
             pub fn xyield(val: Sig.YieldT) Sig.InjectT {
                 const storage = thread_state.currentStorage(InnerStorage);
                 storage.value = .{ .yieldval = val };
@@ -399,7 +398,7 @@ const CoroT = struct {
                 return storage.value.injectval;
             }
 
-            // Returns the value the coroutine returned
+            /// Returns the value the coroutine returned
             pub fn xreturned(self: Self) Sig.ReturnT() {
                 const storage = self._frame.getStorage(InnerStorage);
                 return storage.value.retval;
@@ -417,7 +416,7 @@ const CoroT = struct {
     }
 };
 
-// Estimates the remaining stack size in the currently running coroutine
+/// Estimates the remaining stack size in the currently running coroutine
 pub noinline fn remainingStackSize() usize {
     var dummy: usize = 0;
     dummy += 1;
@@ -440,7 +439,7 @@ pub noinline fn remainingStackSize() usize {
 
 // ============================================================================
 
-// Thread-local coroutine runtime
+/// Thread-local coroutine runtime
 threadlocal var thread_state: ThreadState = .{};
 const ThreadState = struct {
     root_coro: Coro = .{
@@ -462,7 +461,7 @@ const ThreadState = struct {
         }
     };
 
-    // Called from resume
+    /// Called from resume
     fn switchIn(self: *@This(), target: Frame) void {
         if (debug_log_level >= 3) {
             const resumer = self.current();
@@ -479,7 +478,7 @@ const ThreadState = struct {
         }
     }
 
-    // Called from suspend
+    /// Called from suspend
     fn switchOut(self: *@This(), target: Frame) void {
         if (debug_log_level >= 3) {
             const suspender = self.current();
@@ -515,7 +514,7 @@ const ThreadState = struct {
         return self.current() != &self.root_coro;
     }
 
-    // Returns the storage of the currently running coroutine
+    /// Returns the storage of the currently running coroutine
     fn currentStorage(self: *@This(), comptime T: type) *T {
         return self.current_coro.?.getStorage(T);
     }
