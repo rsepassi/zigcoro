@@ -225,11 +225,10 @@ const Coro = struct {
 
         // Never returns
         const err_msg = "Cannot resume an already completed coroutine {any}";
-        @panic(std.fmt.allocPrint(
-            std.heap.c_allocator,
+        std.debug.panic(
             err_msg,
             .{this_coro.id},
-        ) catch err_msg);
+        );
     }
 
     pub fn getStorage(self: @This(), comptime T: type) *T {
