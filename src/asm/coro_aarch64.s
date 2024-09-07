@@ -2,6 +2,8 @@
 # https://github.com/ARM-software/abi-aa/releases
 .global _libcoro_stack_swap
 _libcoro_stack_swap:
+.global libcoro_stack_swap
+libcoro_stack_swap:
 
 # Store caller registers on the current stack
 # Each register requires 8 bytes, there are 20 registers to save
