@@ -45,8 +45,8 @@ fn getExec(exec: ?*Executor) *Executor {
     return env.exec.?;
 }
 
-// Run a coroutine to completion.
-// Must be called from "root", outside of any created coroutine.
+/// Run a coroutine to completion.
+/// Must be called from "root", outside of any created coroutine.
 pub fn run(
     exec: ?*Executor,
     func: anytype,
@@ -60,8 +60,8 @@ pub fn run(
     return xawait(frame);
 }
 
-// Run a coroutine to completion.
-// Must be called from "root", outside of any created coroutine.
+/// Run a coroutine to completion.
+/// Must be called from "root", outside of any created coroutine.
 fn runCoro(exec: ?*Executor, frame: anytype) !void {
     const f = frame.frame();
     if (f.status == .Start) libcoro.xresume(f);
