@@ -103,6 +103,7 @@ pub const TCP = struct {
     tcp: xev.TCP,
 
     pub usingnamespace Stream(Self, xev.TCP, .{
+        .poll = true,
         .close = true,
         .read = .recv,
         .write = .send,
@@ -117,7 +118,7 @@ pub const TCP = struct {
     }
 
     pub fn accept(self: Self) !Self {
-        const AcceptResult = xev.TCP.AcceptError!xev.TCP;
+        const AcceptResult = xev.AcceptError!xev.TCP;
         const Data = XCallback(AcceptResult);
 
         const loop = getExec(self.exec).loop;
@@ -132,7 +133,7 @@ pub const TCP = struct {
         return .{ .exec = self.exec, .tcp = result };
     }
 
-    const ConnectResult = xev.TCP.ConnectError!void;
+    const ConnectResult = xev.ConnectError!void;
     pub fn connect(self: Self, addr: std.net.Address) !void {
         const ResultT = ConnectResult;
         const Data = struct {
@@ -339,6 +340,7 @@ pub const File = struct {
     file: xev.File,
 
     pub usingnamespace Stream(Self, xev.File, .{
+        .poll = true,
         .close = true,
         .read = .read,
         .write = .write,
@@ -485,6 +487,7 @@ pub const UDP = struct {
     udp: xev.UDP,
 
     pub usingnamespace Stream(Self, xev.UDP, .{
+        .poll = true,
         .close = true,
         .read = .none,
         .write = .none,
@@ -580,9 +583,9 @@ pub const UDP = struct {
 };
 
 fn RunT(comptime Func: anytype) type {
-    const T = @typeInfo(@TypeOf(Func)).Fn.return_type.?;
+    const T = @typeInfo(@TypeOf(Func)).@"fn".return_type.?;
     return switch (@typeInfo(T)) {
-        .ErrorUnion => |E| E.payload,
+        .error_union => |E| E.payload,
         else => T,
     };
 }

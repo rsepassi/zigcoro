@@ -1,10 +1,12 @@
 .{
-    .name = "zigcoro",
+    .name = .zigcoro,
     .version = "0.0.0",
+    .fingerprint =  0x7b811699439f32ff,
+
     .dependencies = .{
         .libxev = .{
-            .url = "git+https://github.com/mitchellh/libxev#990ebb3be53f6f10e79504d74d77d2c4f95bbce0",
-            .hash = "12203d0b9555865f3ebcb9fc4670c5c46555e6458fbc51eb4620cfef8123a9640c90",
+            .url = "https://github.com/mitchellh/libxev/archive/refs/heads/main.tar.gz",
+            .hash = "libxev-0.0.0-86vtc-zkEgB7uv1i0Sa6ytJETZQi_lHJrImu9mLb9moi",
         },
     },
     .paths = .{
