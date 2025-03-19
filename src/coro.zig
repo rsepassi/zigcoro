@@ -50,7 +50,7 @@ const StackInfo = struct {
 };
 fn getStack(stack: anytype) !StackInfo {
     const T = @TypeOf(stack);
-    const is_optional = @typeInfo(T) == .Optional;
+    const is_optional = @typeInfo(T) == .optional;
     if (T == @TypeOf(null) or (is_optional and stack == null)) {
         // Use env allocator with default stack size
         if (env.stack_allocator == null) @panic("No explicit stack passed and no default stack allocator available");
@@ -283,7 +283,8 @@ const CoroT = struct {
         }
 
         pub fn ReturnT(comptime self: @This()) type {
-            return @typeInfo(self.Func).Fn.return_type.?;
+            const func_info = @typeInfo(self.Func).@"fn";
+            return func_info.return_type orelse @compileError("Function '" ++ @typeName(self.Func) ++ "' has no return type");
         }
     };
 

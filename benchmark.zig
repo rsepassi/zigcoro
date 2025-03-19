@@ -83,7 +83,7 @@ pub fn main() !void {
             return;
         }
 
-        inline for (@typeInfo(Benchmark).Enum.fields) |f| {
+        inline for (@typeInfo(Benchmark).@"enum".fields) |f| {
             if (std.mem.eql(u8, arg[2..], f.name)) {
                 benchmark = @enumFromInt(f.value);
                 continue :fargs;
