@@ -315,7 +315,7 @@ const CoroT = struct {
             /// Create a Coro
             /// self and stack pointers must remain stable for the lifetime of
             /// the coroutine.
-            fn init(
+            pub fn init(
                 args: Sig.ArgsT,
                 stack: StackT,
                 owns_stack: bool,
