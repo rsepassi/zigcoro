@@ -48,7 +48,7 @@ const StackInfo = struct {
     stack: StackT,
     owned: bool,
 };
-fn getStack(stack: anytype) !StackInfo {
+pub fn getStack(stack: anytype) !StackInfo {
     const T = @TypeOf(stack);
     const is_optional = @typeInfo(T) == .optional;
     if (T == @TypeOf(null) or (is_optional and stack == null)) {
